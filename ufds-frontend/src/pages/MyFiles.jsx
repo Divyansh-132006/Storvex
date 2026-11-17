@@ -32,6 +32,7 @@ function MyFiles() {
     const [view, setView] = useState("list");
     const [search, setSearch] = useState("");
 
+
     const navigation = [
         { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
         { name: "My Files", path: "/myfiles", icon: Files },

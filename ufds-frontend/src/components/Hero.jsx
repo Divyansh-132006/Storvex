@@ -8,7 +8,7 @@ import filebase from "../assets/filebase.webp";
 import storj from "../assets/storj.webp";
 import wasabai from "../assets/wasabai.webp";
 
-function Hero() {
+export function Hero() {
   const navigate = useNavigate();
 
   const orbitNode =
@@ -151,4 +151,4 @@ function Hero() {
   );
 }
 
-export default Hero;
+// export default Hero;
