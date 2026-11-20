@@ -1,6 +1,6 @@
 
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   Eye,
   EyeOff,
@@ -11,9 +11,12 @@ import {
   Cloud,
   Boxes,
 } from "lucide-react";
+import { setAccessToken } from "../auth/authStore";
 
 function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
@@ -23,6 +26,20 @@ function Login() {
     email: "",
     password: "",
   });
+
+  useEffect(() => {
+    if (searchParams.get("oauth") !== "success") return;
+    fetch(`${API_URL}/api/auth/refresh`, { method: "POST", credentials: "include" })
+      .then((response) => {
+        if (!response.ok) throw new Error("Google sign-in failed.");
+        return response.json();
+      })
+      .then(({ accessToken }) => {
+        setAccessToken(accessToken);
+        navigate("/dashboard", { replace: true });
+      })
+      .catch(() => setError("Google sign-in failed. Please try again."));
+  }, [API_URL, navigate, searchParams]);
 
   const handleChange = (e) => {
     setFormData({
@@ -40,12 +57,22 @@ function Login() {
       return;
     }
 
-    console.log("Login Data:", {
-      ...formData,
-      rememberMe,
-    });
-
-    // Backend authentication will be connected here
+    fetch(`${API_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(formData),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.message || "Login failed.");
+        return data;
+      })
+      .then(({ accessToken }) => {
+        setAccessToken(accessToken);
+        navigate("/dashboard");
+      })
+      .catch((requestError) => setError(requestError.message));
   };
 
   return (
@@ -228,6 +255,19 @@ function Login() {
                 />
               </button>
             </form>
+
+            <div className="my-4 flex items-center gap-3 text-xs text-[#525252]">
+              <span className="h-px flex-1 bg-[#262626]" />
+              or
+              <span className="h-px flex-1 bg-[#262626]" />
+            </div>
+            <button
+              type="button"
+              onClick={() => { window.location.href = `${API_URL}/api/auth/google`; }}
+              className="w-full rounded-xl border border-[#262626] bg-[#111111] py-3 text-sm font-semibold text-white transition hover:border-[#B7F542]"
+            >
+              Continue with Google
+            </button>
 
             {/* Signup Link */}
             <p className="mt-6 text-center text-sm text-[#A3A3A3]">

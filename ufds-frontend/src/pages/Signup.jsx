@@ -13,8 +13,10 @@ import {
   Cloud,
   Boxes,
 } from "lucide-react";
+import { setAccessToken } from "../auth/authStore";
 
 function Signup() {
+  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -27,7 +29,7 @@ function Signup() {
 
   const [error, setError] = useState("");
 
-  const handleChangechange  = (e) => {
+  const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
@@ -38,8 +40,28 @@ function Signup() {
     e.preventDefault();
     setError("");
 
-    if (formData.password.length < 8) {
-      setError("Password must contain at least 8 characters.");
+    if (formData.password.length < 12) {
+      setError("Password must contain at least 12 characters.");
+      return;
+    }
+
+    if (!/[A-Z]/.test(formData.password)) {
+      setError("Password must contain an uppercase letter.");
+      return;
+    }
+
+    if (!/[a-z]/.test(formData.password)) {
+      setError("Password must contain a lowercase letter.");
+      return;
+    }
+
+    if (!/[0-9]/.test(formData.password)) {
+      setError("Password must contain a number.");
+      return;
+    }
+
+    if (!/[^A-Za-z0-9]/.test(formData.password)) {
+      setError("Password must contain a special character.");
       return;
     }
 
@@ -48,21 +70,49 @@ function Signup() {
       return;
     }
 
-    console.log("Signup form data:", formData);
+    fetch(`${API_URL}/api/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(formData),
+    })
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) {
+          const firstError = data.errors
+            ? Object.values(data.errors).flat().find(Boolean)
+            : null;
+          throw new Error(firstError || data.message || "Registration failed.");
+        }
+        return data;
+      })
+      .then(({ accessToken }) => {
+        setAccessToken(accessToken);
+        window.location.href = "/dashboard";
+      })
+      .catch((requestError) => setError(requestError.message));
   };
 
   const passwordChecks = [
     {
-      label: "At least 8 characters",
-      valid: formData.password.length >= 8,
+      label: "At least 12 characters",
+      valid: formData.password.length >= 12,
     },
     {
       label: "Contains an uppercase letter",
       valid: /[A-Z]/.test(formData.password),
     },
     {
+      label: "Contains a lowercase letter",
+      valid: /[a-z]/.test(formData.password),
+    },
+    {
       label: "Contains a number",
       valid: /[0-9]/.test(formData.password),
+    },
+    {
+      label: "Contains a special character",
+      valid: /[^A-Za-z0-9]/.test(formData.password),
     },
   ];
 
@@ -310,6 +360,19 @@ function Signup() {
                 />
               </button>
             </form>
+
+            <div className="my-4 flex items-center gap-3 text-xs text-[#525252]">
+              <span className="h-px flex-1 bg-[#262626]" />
+              or
+              <span className="h-px flex-1 bg-[#262626]" />
+            </div>
+            <button
+              type="button"
+              onClick={() => { window.location.href = `${API_URL}/api/auth/google`; }}
+              className="w-full rounded-xl border border-[#262626] bg-[#111111] py-3 text-sm font-semibold text-white transition hover:border-[#B7F542]"
+            >
+              Continue with Google
+            </button>
 
             {/* Login */}
             <p className="mt-4 text-center text-sm text-[#A3A3A3]">
