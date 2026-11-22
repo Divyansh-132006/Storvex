@@ -70,7 +70,11 @@ export const google = (req, res) => {
   }
   const state = crypto.randomBytes(32).toString("hex");
   res.cookie(OAUTH_STATE_COOKIE, state, {
-    httpOnly: true, secure: isProduction, sameSite: "lax", maxAge: 10 * 60 * 1000, path: "/api/auth",
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000,
+    path: "/api/auth",
   });
   return res.redirect(oauthClient.generateAuthUrl({
     access_type: "offline", scope: ["openid", "email", "profile"], state, prompt: "select_account",

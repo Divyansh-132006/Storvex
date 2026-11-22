@@ -28,7 +28,7 @@ const createSession = async (userId, familyId = crypto.randomUUID()) => {
 export const register = async ({ name, email, password }) => {
   const normalizedEmail = email.trim().toLowerCase();
   if (await User.exists({ email: normalizedEmail })) {
-    const error = new Error("Unable to create account with those details");
+    const error = new Error("An account with this email already exists");
     error.statusCode = 409;
     throw error;
   }

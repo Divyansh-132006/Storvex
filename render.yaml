@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: storvexx-backend
+    runtime: node
+    rootDir: ufds-backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+
+  - type: web
+    name: storvex-frontend
+    runtime: static
+    rootDir: ufds-frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
