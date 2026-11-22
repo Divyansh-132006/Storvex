@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
+import { logout } from "../auth/authStore";
 import {
   User,
   Shield,
@@ -13,6 +15,7 @@ import {
   Check,
   ChevronRight,
   LogOut,
+  ChevronLeft,
 } from "lucide-react";
 
 const settingsSections = [
@@ -206,6 +209,13 @@ function Settings() {
       <div className="mx-auto max-w-7xl">
         {/* Page Header */}
         <div className="mb-8">
+          <Link
+            to="/dashboard"
+            className="mb-5 inline-flex items-center gap-2 text-sm text-[#777777] transition hover:text-[#B7F542]"
+          >
+            <ChevronLeft size={16} />
+            Back to Dashboard
+          </Link>
           <div className="flex items-center gap-2 text-sm text-[#777777]">
             <span>Storvex</span>
             <ChevronRight size={14} />
@@ -261,7 +271,10 @@ function Settings() {
             <div className="my-4 border-t border-[#262626]" />
 
             <button
-              onClick={() => alert("Connect logout API here.")}
+              onClick={async () => {
+                await logout();
+                window.location.hash = "/login";
+              }}
               className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-[#888888] transition hover:bg-[#1A1A1A] hover:text-red-400"
             >
               <LogOut size={18} />

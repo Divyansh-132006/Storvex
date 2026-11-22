@@ -26,6 +26,7 @@ function App() {
         <Route path="/myfiles" element={<MyFiles />} />
         <Route path="/sharedfiles" element={<SharedFiles />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/storage" element={<UpgradeStorage />} />
         <Route path="/upgrade-storage" element={<UpgradeStorage />} />
         </Route>
         </Route>

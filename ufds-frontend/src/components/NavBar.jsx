@@ -1,11 +1,30 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Link } from "react-router-dom";
-import { Menu, X } from "lucide-react";
+import { Menu, X, UserRound } from "lucide-react";
 import storvexLogo from "../assets/Storvex.png";
+import { getAccessToken, subscribeAuth, refreshAccessToken, logout } from "../auth/authStore";
 
 function Navbar() {
     const [isOpen, setIsOpen] = useState(false);
+    const [authenticated, setAuthenticated] = useState(Boolean(getAccessToken()));
+
+    useEffect(() => {
+        const unsubscribe = subscribeAuth(() =>
+            setAuthenticated(Boolean(getAccessToken()))
+        );
+        if (!getAccessToken()) {
+            refreshAccessToken()
+                .then(() => setAuthenticated(true))
+                .catch(() => setAuthenticated(false));
+        }
+        return unsubscribe;
+    }, []);
+
+    const handleLogout = async () => {
+        await logout();
+        setIsOpen(false);
+    };
 
     const navClass = ({ isActive }) =>
         `transition-colors duration-300 pb-2 ${
@@ -58,19 +77,39 @@ function Navbar() {
 
                 {/* Desktop Authentication */}
                 <div className="hidden md:flex items-center gap-3">
-                    <Link
-                        to="/login"
-                        className="px-5 py-2.5 bg-[#B7F542] text-black font-semibold rounded-lg hover:bg-[#A6E632] transition-all"
-                    >
-                        Login
-                    </Link>
-
-                    <Link
-                        to="/signup"
-                        className="px-5 py-2.5 bg-[#B7F542] text-black font-semibold rounded-lg hover:bg-[#A6E632] transition-all"
-                    >
-                        Sign Up
-                    </Link>
+                    {authenticated ? (
+                        <>
+                            <Link
+                                to="/dashboard"
+                                className="flex items-center gap-2 px-5 py-2.5 bg-[#B7F542] text-black font-semibold rounded-lg hover:bg-[#A6E632] transition-all"
+                            >
+                                <UserRound size={18} />
+                                Dashboard
+                            </Link>
+                            <button
+                                type="button"
+                                onClick={handleLogout}
+                                className="px-5 py-2.5 border border-[#333333] text-white font-semibold rounded-lg hover:border-[#B7F542] transition-all"
+                            >
+                                Logout
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <Link
+                                to="/login"
+                                className="px-5 py-2.5 bg-[#B7F542] text-black font-semibold rounded-lg hover:bg-[#A6E632] transition-all"
+                            >
+                                Login
+                            </Link>
+                            <Link
+                                to="/signup"
+                                className="px-5 py-2.5 bg-[#B7F542] text-black font-semibold rounded-lg hover:bg-[#A6E632] transition-all"
+                            >
+                                Sign Up
+                            </Link>
+                        </>
+                    )}
                 </div>
 
                 {/* Mobile Hamburger Button */}
@@ -127,21 +166,41 @@ function Navbar() {
 
                     {/* Mobile Authentication Buttons */}
                     <div className="flex flex-col sm:flex-row gap-3 mt-5 pt-5 border-t border-[#262626]">
-                        <Link
-                            to="/login"
-                            onClick={closeMenu}
-                            className="w-full text-center px-5 py-3 bg-[#B7F542] text-black font-semibold rounded-lg hover:bg-[#A6E632] transition-all"
-                        >
-                            Login
-                        </Link>
-
-                        <Link
-                            to="/signup"
-                            onClick={closeMenu}
-                            className="w-full text-center px-5 py-3 bg-[#B7F542] text-black font-semibold rounded-lg hover:bg-[#A6E632] transition-all"
-                        >
-                            Sign Up
-                        </Link>
+                        {authenticated ? (
+                            <>
+                                <Link
+                                    to="/dashboard"
+                                    onClick={closeMenu}
+                                    className="w-full text-center px-5 py-3 bg-[#B7F542] text-black font-semibold rounded-lg"
+                                >
+                                    Dashboard
+                                </Link>
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="w-full px-5 py-3 border border-[#333333] text-white font-semibold rounded-lg"
+                                >
+                                    Logout
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <Link
+                                    to="/login"
+                                    onClick={closeMenu}
+                                    className="w-full text-center px-5 py-3 bg-[#B7F542] text-black font-semibold rounded-lg"
+                                >
+                                    Login
+                                </Link>
+                                <Link
+                                    to="/signup"
+                                    onClick={closeMenu}
+                                    className="w-full text-center px-5 py-3 bg-[#B7F542] text-black font-semibold rounded-lg"
+                                >
+                                    Sign Up
+                                </Link>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>

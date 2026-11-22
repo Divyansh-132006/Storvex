@@ -1,16 +1,27 @@
 const API_URL = (import.meta.env.VITE_API_URL || "https://storvexx.onrender.com").replace(/\/$/, "");
 let accessToken = null;
 let refreshPromise = null;
+const authListeners = new Set();
+
+const notifyAuthListeners = () => {
+  authListeners.forEach((listener) => listener());
+};
 
 export const setAccessToken = (token) => {
   accessToken = token;
+  notifyAuthListeners();
 };
 
 export const clearAccessToken = () => {
   accessToken = null;
+  notifyAuthListeners();
 };
 
 export const getAccessToken = () => accessToken;
+export const subscribeAuth = (listener) => {
+  authListeners.add(listener);
+  return () => authListeners.delete(listener);
+};
 
 export const refreshAccessToken = async () => {
   if (!refreshPromise) {

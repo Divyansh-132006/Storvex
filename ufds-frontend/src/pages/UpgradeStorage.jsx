@@ -10,7 +10,7 @@ import {
   ChevronLeft,
   CircleHelp,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
 const storagePlans = [
   {
@@ -56,7 +56,6 @@ const storagePlans = [
 ];
 
 function UpgradeStorage() {
-  const navigate = useNavigate();
   const [selectedPlan, setSelectedPlan] = useState("plus");
   const [billingCycle, setBillingCycle] = useState("monthly");
 
@@ -69,13 +68,13 @@ function UpgradeStorage() {
       <div className="mx-auto max-w-7xl">
 
         {/* Breadcrumb */}
-        <button
-          onClick={() => navigate(-1)}
+        <Link
+          to="/dashboard"
           className="mb-6 flex items-center gap-2 text-sm text-[#777777] transition hover:text-[#B7F542]"
         >
           <ChevronLeft size={16} />
-          Back
-        </button>
+          Back to Dashboard
+        </Link>
 
         {/* Header */}
         <div className="mb-10 text-center">

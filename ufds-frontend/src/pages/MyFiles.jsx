@@ -80,7 +80,7 @@ function MyFiles() {
   };
 
   return (
-    <main className="min-h-screen bg-[#0A0A0A] px-5 py-8 text-white lg:ml-64 sm:px-8">
+    <main className="min-h-screen bg-[#0A0A0A] px-5 py-8 text-white sm:px-8">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-5">
         <div>
           <Link to="/dashboard" className="mb-3 inline-block text-sm text-[#B7F542]">
