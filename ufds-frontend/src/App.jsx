@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom"
+import { HashRouter, Routes, Route } from "react-router-dom"
 import Home from "./pages/Home";
 import UploadPage from "./pages/UploadPage";
 import Dashboard from "./pages/Dashboard";
@@ -14,7 +14,7 @@ import Settings from "./pages/Settings";
 import UpgradeStorage from "./pages/UpgradeStorage";
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route element={<MainLayout />}>
         <Route path="/" element={<Home />} />
@@ -32,7 +32,7 @@ function App() {
          <Route path="/signup" element={<Signup />} />
          <Route path="/login" element={<Login />} />
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
 

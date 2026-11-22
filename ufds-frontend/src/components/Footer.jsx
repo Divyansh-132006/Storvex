@@ -12,8 +12,8 @@ import {
 function Footer() {
   const footerLinks = {
     Product: [
-      { name: "Features", href: "/#features" },
-      { name: "How It Works", href: "/#how-it-works" },
+      { name: "Features", href: "/features" },
+      { name: "How It Works", href: "/howitworks" },
       { name: "Dashboard", href: "/dashboard" },
       { name: "Upload Files", href: "/upload" },
     ],

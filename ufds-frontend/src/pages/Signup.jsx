@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Eye,
   EyeOff,
@@ -16,6 +16,7 @@ import {
 import { setAccessToken } from "../auth/authStore";
 
 function Signup() {
+  const navigate = useNavigate();
   const API_URL = (import.meta.env.VITE_API_URL || "https://storvexx.onrender.com").replace(/\/$/, "");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -103,7 +104,7 @@ function Signup() {
           password: "",
           confirmPassword: "",
         }));
-        window.location.href = "/dashboard";
+        navigate("/dashboard", { replace: true });
       })
       .catch((requestError) => {
         setFormData((current) => ({
