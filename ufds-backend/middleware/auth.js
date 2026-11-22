@@ -4,7 +4,12 @@ import { getUser } from "../services/auth.service.js";
 
 export const requireSameOrigin = (req, res, next) => {
   const origin = req.get("origin")?.replace(/\/$/, "");
-  if (origin && origin !== config.frontendUrl) {
+  const allowedOrigins = new Set([
+    config.frontendUrl,
+    "https://storvex.onrender.com",
+    "http://localhost:5173",
+  ]);
+  if (origin && !allowedOrigins.has(origin)) {
     return res.status(403).json({ success: false, message: "Invalid request origin" });
   }
   next();

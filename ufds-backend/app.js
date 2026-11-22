@@ -12,7 +12,12 @@ app.use(
     cors({
         origin(origin, callback) {
             const normalizedOrigin = origin?.replace(/\/$/, "");
-            if (!origin || normalizedOrigin === config.frontendUrl) {
+            const allowedOrigins = new Set([
+                config.frontendUrl,
+                "https://storvex.onrender.com",
+                "http://localhost:5173",
+            ]);
+            if (!origin || allowedOrigins.has(normalizedOrigin)) {
                 callback(null, true);
                 return;
             }

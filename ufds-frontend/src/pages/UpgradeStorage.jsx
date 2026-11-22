@@ -62,8 +62,6 @@ function UpgradeStorage() {
 
   const handleUpgrade = (plan) => {
     // Connect this handler to your subscription / checkout API.
-    console.log("Selected plan:", plan);
-    console.log("Billing cycle:", billingCycle);
   };
 
   return (

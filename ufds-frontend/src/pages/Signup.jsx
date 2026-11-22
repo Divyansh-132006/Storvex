@@ -19,6 +19,7 @@ function Signup() {
   const API_URL = (import.meta.env.VITE_API_URL || "https://storvexx.onrender.com").replace(/\/$/, "");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     fullName: "",
@@ -39,6 +40,7 @@ function Signup() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setError("");
+    if (submitting) return;
 
     if (formData.password.length < 12) {
       setError("Password must contain at least 12 characters.");
@@ -70,11 +72,19 @@ function Signup() {
       return;
     }
 
+    setSubmitting(true);
+    const payload = {
+      fullName: formData.fullName.trim(),
+      email: formData.email.trim().toLowerCase(),
+      password: formData.password,
+      confirmPassword: formData.confirmPassword,
+    };
+
     fetch(`${API_URL}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(formData),
+      body: JSON.stringify(payload),
     })
       .then(async (response) => {
         const data = await response.json();
@@ -88,9 +98,22 @@ function Signup() {
       })
       .then(({ accessToken }) => {
         setAccessToken(accessToken);
+        setFormData((current) => ({
+          ...current,
+          password: "",
+          confirmPassword: "",
+        }));
         window.location.href = "/dashboard";
       })
-      .catch((requestError) => setError(requestError.message));
+      .catch((requestError) => {
+        setFormData((current) => ({
+          ...current,
+          password: "",
+          confirmPassword: "",
+        }));
+        setError(requestError.message);
+      })
+      .finally(() => setSubmitting(false));
   };
 
   const passwordChecks = [
@@ -351,9 +374,10 @@ function Signup() {
               {/* Submit */}
               <button
                 type="submit"
+                disabled={submitting}
                 className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#B7F542] py-3 text-sm font-semibold text-black transition hover:bg-[#A5E632]"
               >
-                Create account
+                {submitting ? "Creating account..." : "Create account"}
                 <ArrowRight
                   size={17}
                   className="transition-transform group-hover:translate-x-1"

@@ -21,6 +21,7 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     email: "",
@@ -28,7 +29,12 @@ function Login() {
   });
 
   useEffect(() => {
-    if (searchParams.get("oauth") !== "success") return;
+    const oauthResult = searchParams.get("oauth");
+    if (oauthResult === "error") {
+      setError("Google sign-in failed. Please try again.");
+      return;
+    }
+    if (oauthResult !== "success") return;
     fetch(`${API_URL}/api/auth/refresh`, { method: "POST", credentials: "include" })
       .then((response) => {
         if (!response.ok) throw new Error("Google sign-in failed.");
@@ -51,17 +57,22 @@ function Login() {
   const handleSubmit = (e) => {
     e.preventDefault();
     setError("");
+    if (submitting) return;
 
     if (!formData.email || !formData.password) {
       setError("Please enter your email and password.");
       return;
     }
 
+    setSubmitting(true);
     fetch(`${API_URL}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify(formData),
+      body: JSON.stringify({
+        email: formData.email.trim().toLowerCase(),
+        password: formData.password,
+      }),
     })
       .then(async (response) => {
         const data = await response.json();
@@ -70,9 +81,14 @@ function Login() {
       })
       .then(({ accessToken }) => {
         setAccessToken(accessToken);
+        setFormData((current) => ({ ...current, password: "" }));
         navigate("/dashboard");
       })
-      .catch((requestError) => setError(requestError.message));
+      .catch((requestError) => {
+        setFormData((current) => ({ ...current, password: "" }));
+        setError(requestError.message);
+      })
+      .finally(() => setSubmitting(false));
   };
 
   return (
@@ -246,9 +262,10 @@ function Login() {
               {/* Login Button */}
               <button
                 type="submit"
+                disabled={submitting}
                 className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#B7F542] py-3 text-sm font-semibold text-black transition hover:bg-[#A5E632]"
               >
-                Log in
+                {submitting ? "Logging in..." : "Log in"}
                 <ArrowRight
                   size={17}
                   className="transition-transform group-hover:translate-x-1"

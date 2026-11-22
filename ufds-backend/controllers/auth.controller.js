@@ -19,7 +19,9 @@ export const register = async (req, res, next) => {
   try {
     const name = req.body.name || req.body.fullName;
     return sendAuth(res, await authService.register({ ...req.body, name }));
-  } catch (error) { return next(error); }
+  } catch (error) {
+    return next(error);
+  }
 };
 export const login = async (req, res, next) => {
   try { return sendAuth(res, await authService.login(req.body)); } catch (error) { return next(error); }
@@ -86,6 +88,8 @@ export const googleCallback = async (req, res, next) => {
     res.clearCookie(OAUTH_STATE_COOKIE, { httpOnly: true, secure: isProduction, sameSite: "lax", path: "/api/auth" });
     const result = await authService.googleLogin(req.query.code);
     setRefreshCookie(res, result.refreshToken);
-    return res.redirect(`${config.frontendUrl}/`);
-  } catch (error) { return next(error); }
+    return res.redirect(`${config.frontendUrl}/login?oauth=success`);
+  } catch (error) {
+    return res.redirect(`${config.frontendUrl}/login?oauth=error`);
+  }
 };
