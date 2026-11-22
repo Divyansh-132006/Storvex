@@ -219,6 +219,34 @@ Example success:
 
 Missing or invalid access tokens return `401 {"success":false,"message":"Authentication required"}`.
 
+## Encrypted files
+
+Generate a master key and place it in `server/.env` (never commit it):
+
+```powershell
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Set it as `MASTER_KEY_V1`, then configure `STORAGE_DIR`, `MAX_FILE_SIZE_MB`,
+`MAX_USER_STORAGE_MB`, and `UNIT_SIZE_BYTES`. Install dependencies and run the
+backend tests with `npm install` and `npm test` from `server` (the current
+authentication baseline uses syntax checks; file integration tests require a
+MongoDB test instance).
+
+### File API
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| POST | `/api/files/upload` | Stream one multipart `file`, encrypt, and store it |
+| GET | `/api/files` | List the authenticated user's committed files |
+| GET | `/api/files/:id/download` | Authenticated owner-only streaming download |
+| DELETE | `/api/files/:id` | Idempotent owner-only deletion |
+
+The database contains the owner, status, timestamps, sizes, unit count, key
+version, random file salt, encrypted metadata, ciphertext SHA-256, and random
+storage key. The encrypted blob contains only ciphertext and authentication
+tags. It contains no plaintext name or file content. See [SECURITY.md](./SECURITY.md).
+
 ## Deployment
 
 ### Render (backend)

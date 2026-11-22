@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   X,
 } from "lucide-react";
+import { apiFetch } from "../auth/authStore";
 
 function FileUpload() {
   const fileInputRef = useRef(null);
@@ -17,6 +18,7 @@ function FileUpload() {
   const [files, setFiles] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [error, setError] = useState("");
 
   const formatFileSize = (bytes) => {
     if (bytes === 0) return "0 Bytes";
@@ -83,28 +85,45 @@ function FileUpload() {
     );
   };
 
-  const handleUpload = () => {
+  const handleUpload = async () => {
     if (files.length === 0 || isUploading) return;
 
     setIsUploading(true);
+    setError("");
 
-    setFiles((previousFiles) =>
-      previousFiles.map((item) => ({
-        ...item,
-        status: "Uploading",
-      }))
-    );
-
-    setTimeout(() => {
+    for (const item of files) {
+      if (item.status === "Uploaded") continue;
       setFiles((previousFiles) =>
-        previousFiles.map((item) => ({
-          ...item,
-          status: "Uploaded",
-        }))
+        previousFiles.map((current) =>
+          current.id === item.id ? { ...current, status: "Uploading" } : current,
+        ),
       );
 
-      setIsUploading(false);
-    }, 2000);
+      try {
+        const body = new FormData();
+        body.append("file", item.file);
+        const response = await apiFetch("/api/files/upload", {
+          method: "POST",
+          body,
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.message);
+        setFiles((previousFiles) =>
+          previousFiles.map((current) =>
+            current.id === item.id ? { ...current, status: "Uploaded" } : current,
+          ),
+        );
+      } catch {
+        setFiles((previousFiles) =>
+          previousFiles.map((current) =>
+            current.id === item.id ? { ...current, status: "Failed" } : current,
+          ),
+        );
+        setError("One or more files could not be uploaded.");
+      }
+    }
+
+    setIsUploading(false);
   };
 
   return (
@@ -172,6 +191,7 @@ function FileUpload() {
 
         {files.length > 0 && (
           <div className="mt-10">
+            {error && <p className="mb-5 rounded-xl border border-red-900 bg-red-950/30 p-4 text-red-300">{error}</p>}
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-xl font-semibold">
                 Selected Files

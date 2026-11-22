@@ -11,11 +11,9 @@ export function createRefreshToken() {
 }
 
 export function signAccessToken(user) {
-  return jwt.sign(
-    { sub: user.id, role: user.role },
-    config.accessSecret,
-    { expiresIn: config.accessTokenTtl },
-  );
+  return jwt.sign({ sub: user.id, role: user.role }, config.accessSecret, {
+    expiresIn: config.accessTokenTtl,
+  });
 }
 
 export function verifyAccessToken(token) {

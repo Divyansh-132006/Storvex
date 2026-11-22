@@ -7,9 +7,11 @@ export default function Navbar() {
     <nav className="navbar">
       <Link className="brand" to={user ? "/dashboard" : "/"}>UFDS</Link>
       {user ? (
-        <button className="button secondary" type="button" onClick={logout}>
-          Logout
-        </button>
+        <div className="nav-links">
+          <Link to="/dashboard">Dashboard</Link>
+          <Link to="/files">My files</Link>
+          <button className="button secondary" type="button" onClick={logout}>Logout</button>
+        </div>
       ) : (
         <div className="nav-links">
           <Link to="/login">Login</Link>

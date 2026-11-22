@@ -1,7 +1,7 @@
 import { useAuth } from "../context/AuthContext";
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
     <main className="dashboard">
@@ -15,11 +15,6 @@ export default function Dashboard() {
           <h1>{user.name}</h1>
           <p>{user.email}</p>
         </div>
-        <button className="button secondary" type="button" onClick={logout}>Logout</button>
-      </section>
-      <section className="files-placeholder">
-        <h2>Your files will appear here</h2>
-        <p>File upload and storage will be added later.</p>
       </section>
     </main>
   );
