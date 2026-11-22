@@ -2,5 +2,14 @@ node_modules/
 dist/
 .env
 .env.local
+.env.*
+*.env
 *.log
 server/storage/
+uploads/
+coverage/
+test-results/
+.tmp/
+tmp/
+upload-test*
+download-test*

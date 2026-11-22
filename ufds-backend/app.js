@@ -3,13 +3,21 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes.js";
+import fileRoutes from "./routes/file.routes.js";
 import { config } from "./config/env.js";
 
 const app = express();
 app.use(helmet());
 app.use(
     cors({
-        origin: config.frontendUrl,
+        origin(origin, callback) {
+            const normalizedOrigin = origin?.replace(/\/$/, "");
+            if (!origin || normalizedOrigin === config.frontendUrl) {
+                callback(null, true);
+                return;
+            }
+            callback(new Error("Origin not allowed"));
+        },
         credentials: true,
     })
 );
@@ -18,6 +26,7 @@ app.use(express.json({
 }));
 app.use(cookieParser());
 app.use("/api/auth", authRoutes);
+app.use("/api/files", fileRoutes);
 
 app.get('/', (req, res)=>{
     res.status(200).json({

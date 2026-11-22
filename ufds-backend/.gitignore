@@ -2,3 +2,9 @@
 node_modules
 dist
 uploads
+coverage
+test-results
+.tmp
+tmp
+upload-test*
+download-test*

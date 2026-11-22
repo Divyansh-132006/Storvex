@@ -3,7 +3,7 @@ import { config } from "../config/env.js";
 import { getUser } from "../services/auth.service.js";
 
 export const requireSameOrigin = (req, res, next) => {
-  const origin = req.get("origin");
+  const origin = req.get("origin")?.replace(/\/$/, "");
   if (origin && origin !== config.frontendUrl) {
     return res.status(403).json({ success: false, message: "Invalid request origin" });
   }

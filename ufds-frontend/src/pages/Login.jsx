@@ -16,7 +16,7 @@ import { setAccessToken } from "../auth/authStore";
 function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_URL = (import.meta.env.VITE_API_URL || "https://storvexx.onrender.com").replace(/\/$/, "");
 
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
