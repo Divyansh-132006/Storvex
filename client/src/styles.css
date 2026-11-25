@@ -129,6 +129,13 @@ a { color: #3157d5; }
 .file-table { margin-top: 20px; border-top: 1px solid #e4e9f2; }
 .file-row { display: flex; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid #e4e9f2; }
 .file-row small { display: block; margin-top: 5px; color: #667085; }
+.health-badge { display: inline-block; margin-top: 7px; padding: 3px 8px; border-radius: 999px; font-size: 0.75rem; text-transform: capitalize; }
+.health-badge.healthy { color: #067647; background: #ecfdf3; }
+.health-badge.degraded { color: #b54708; background: #fffaeb; }
+.health-badge.unrecoverable { color: #b42318; background: #fef3f2; }
+.demo-panel { display: grid; gap: 8px; margin-top: 24px; padding: 16px; border: 1px solid #e4e9f2; border-radius: 12px; }
+.demo-panel div { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.demo-panel div span { min-width: 90px; }
 .file-actions { display: flex; gap: 8px; align-items: center; }
 .button.danger { color: #b42318; background: white; border-color: #fecdca; }
 .loading-page, .not-found { min-height: calc(100vh - 64px); display: grid; place-content: center; text-align: center; }

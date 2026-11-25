@@ -32,6 +32,44 @@ npm run dev
 
 The API listens on `http://localhost:5000`.
 
+### Distributed encrypted storage
+
+New uploads use encrypted 4+1 distribution by default. ChaCha20-Poly1305
+encryption runs first; each encrypted stream is split into 1 MiB blocks,
+grouped as four data shards plus one XOR parity shard, and placed at provider
+positions 1-5. The parity position rotates by group:
+
+```text
+group 0: P D0 D1 D2 D3
+group 1: D0 P D1 D2 D3
+group 2: D0 D1 P D2 D3
+```
+
+The layout tolerates one unavailable or corrupt shard per group. Two bad
+shards in one group are unrecoverable. The default development setup uses five
+GridFS buckets (`provider1` through `provider5`); these buckets in one Atlas
+cluster are simulated providers, not independent failure domains. For real
+failure domains set each `PROVIDER_N_TYPE=s3` and configure the S3-compatible
+endpoint and credentials (Backblaze B2, Filebase, Wasabi, or a Storj gateway).
+
+Providers receive random shard object keys and ciphertext only. MongoDB stores
+file metadata, shard positions, sizes, and SHA-256 hashes, but never keys,
+plaintext names, or plaintext hashes. SHA-256 detects corruption but is not
+authentication: hashes must be protected, and Poly1305 decryption remains the
+final integrity check.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/api/files/:id/health` | Owner-only group/provider health |
+| GET | `/api/admin/providers` | Admin provider and circuit status |
+| POST | `/api/admin/providers/:index/fault` | Development fault injection |
+| POST | `/api/admin/repair/run` | Run one repair pass |
+
+Set `ENABLE_FAULT_INJECTION=true` outside production to demo an outage:
+offline one provider, download successfully through parity, then run repair.
+The upload path keeps at most two groups in flight by default; a manual 1 GB
+test should confirm memory remains approximately constant.
+
 ### 2. Client
 
 ```powershell

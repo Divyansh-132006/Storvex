@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api/axios";
+import { useAuth } from "../context/AuthContext";
 
 const maxSize = 500 * 1024 * 1024;
 const readable = (bytes) => {
@@ -22,10 +23,18 @@ export default function Files() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { user } = useAuth();
+  const [providerHealth, setProviderHealth] = useState([]);
+  const [demoEnabled, setDemoEnabled] = useState(false);
 
   const load = async () => {
     try {
-      setFiles((await api.get("/files")).data.files);
+      const nextFiles = (await api.get("/files")).data.files;
+      const withHealth = await Promise.all(nextFiles.map(async (file) => {
+        try { return { ...file, health: (await api.get(`/files/${file.id}/health`)).data.health }; }
+        catch { return { ...file, health: { status: "unrecoverable" } }; }
+      }));
+      setFiles(withHealth);
     } catch {
       setError("Unable to load your files.");
     } finally {
@@ -33,6 +42,13 @@ export default function Files() {
     }
   };
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (user?.role !== "admin") return;
+    api.get("/admin/providers").then((response) => {
+      setProviderHealth(response.data.providers);
+      setDemoEnabled(response.data.providers.some((provider) => provider.faultMode && provider.faultMode !== "disabled"));
+    }).catch(() => {});
+  }, [user]);
 
   const upload = async (file) => {
     if (!file) return;
@@ -71,6 +87,20 @@ export default function Files() {
     catch { setError("Delete failed."); }
   };
 
+  const setFault = async (index, mode) => {
+    try {
+      await api.post(`/admin/providers/${index}/fault`, { mode });
+      const response = await api.get("/admin/providers");
+      setProviderHealth(response.data.providers);
+      setDemoEnabled(true);
+    } catch (requestError) { setError(requestError.response?.data?.message || "Unable to change provider state."); }
+  };
+
+  const runRepair = async () => {
+    try { await api.post("/admin/repair/run"); await load(); }
+    catch { setError("Repair could not be completed."); }
+  };
+
   return (
     <main className="dashboard">
       <section className="files-page">
@@ -87,7 +117,7 @@ export default function Files() {
           <div className="file-table">
             {files.map((file) => (
               <div className="file-row" key={file.id}>
-                <div><strong>{file.name}</strong><small>{readable(file.size)} · {new Date(file.createdAt).toLocaleString()}</small></div>
+                <div><strong>{file.name}</strong><small>{readable(file.size)} · {new Date(file.createdAt).toLocaleString()}</small><span className={`health-badge ${file.health?.status || "unrecoverable"}`}>{file.health?.status || "Unrecoverable"}</span></div>
                 <div className="file-actions">
                   <button className="button secondary" type="button" onClick={() => download(file)} disabled={selected === file.id}>{selected === file.id ? "Downloading..." : "Download"}</button>
                   <button className="button danger" type="button" onClick={() => remove(file)}>Delete</button>
@@ -96,6 +126,14 @@ export default function Files() {
             ))}
           </div>
         )}
+        {user?.role === "admin" && demoEnabled && <aside className="demo-panel">
+          <strong>Provider failure demo</strong>
+          {providerHealth.map((provider) => <div key={provider.index}>
+            <span>Provider {provider.index + 1}</span>
+            {["offline", "corrupt", "none"].map((mode) => <button className="button secondary" type="button" key={mode} onClick={() => setFault(provider.index, mode)}>{mode === "none" ? "Normal" : mode}</button>)}
+          </div>)}
+          <button className="button primary" type="button" onClick={runRepair}>Run repair</button>
+        </aside>}
       </section>
     </main>
   );

@@ -9,6 +9,7 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.758.0",
     "bcryptjs": "^3.0.2",
     "busboy": "^1.6.0",
     "cookie-parser": "^1.4.7",
@@ -25,6 +26,7 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "mongodb-memory-server": "^11.4.0",
     "nodemon": "^3.1.9"
   }
 }

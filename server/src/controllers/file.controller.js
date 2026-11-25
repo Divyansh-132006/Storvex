@@ -4,6 +4,7 @@ import {
   getDownload,
   listFiles,
   uploadFile,
+  fileHealth,
 } from "../services/file.service.js";
 
 export async function upload(req, res, next) {
@@ -45,6 +46,14 @@ export async function remove(req, res, next) {
   try {
     await deleteFile(req.user.id, req.params.id);
     res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function health(req, res, next) {
+  try {
+    res.json({ success: true, health: await fileHealth(req.user.id, req.params.id) });
   } catch (error) {
     next(error);
   }

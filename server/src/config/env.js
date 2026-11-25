@@ -53,4 +53,13 @@ export const config = Object.freeze({
   unitSize: Number(process.env.UNIT_SIZE_BYTES || 1048576),
   verifyCiphertextHashOnDownload:
     process.env.VERIFY_CIPHERTEXT_HASH_ON_DOWNLOAD !== "false",
+  shardSizeBytes: Number(process.env.SHARD_SIZE_BYTES || 1048576),
+  uploadGroupConcurrency: Number(process.env.UPLOAD_GROUP_CONCURRENCY || 2),
+  uploadMinShardsPerGroup: Number(process.env.UPLOAD_MIN_SHARDS_PER_GROUP || 5),
+  verifyReadback: process.env.VERIFY_READBACK !== "false",
+  providerTimeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS || 15000),
+  providerMaxRetries: Number(process.env.PROVIDER_MAX_RETRIES || 3),
+  pendingTimeoutMinutes: Number(process.env.PENDING_TIMEOUT_MINUTES || 30),
+  enableFaultInjection:
+    nodeEnv !== "production" && process.env.ENABLE_FAULT_INJECTION === "true",
 });

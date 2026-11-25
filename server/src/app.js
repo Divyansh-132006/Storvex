@@ -6,6 +6,7 @@ import mongoSanitize from "express-mongo-sanitize";
 import hpp from "hpp";
 import authRoutes from "./routes/auth.routes.js";
 import fileRoutes from "./routes/file.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
 import { config } from "./config/env.js";
 import {
   errorHandler,
@@ -36,6 +37,7 @@ app.use(hpp());
 
 app.use("/api/auth", authRoutes);
 app.use("/api/files", fileRoutes);
+app.use("/api/admin", adminRoutes);
 app.use(notFoundHandler);
 app.use(errorHandler);
 
