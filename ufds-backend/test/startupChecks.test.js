@@ -37,6 +37,14 @@ test("production gateway startup fails without its internal service token", () =
   assert.match(result.stderr, /INTERNAL_SERVICE_TOKEN/);
 });
 
+test("production gateway trusts Render's single proxy hop", () => {
+  const result = importGateway(
+    {},
+    "const {default:app}=await import('./app.js'); if(app.get('trust proxy')!==1) process.exit(3)",
+  );
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("legacy upload is opt-in and disabled by default", () => {
   const code = "const {config}=await import('./config/env.js'); if(config.allowLegacyUpload) process.exit(3)";
   const disabled = importGateway({

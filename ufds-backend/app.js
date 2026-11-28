@@ -7,6 +7,7 @@ import fileRoutes from "./routes/file.routes.js";
 import { config } from "./config/env.js";
 
 const app = express();
+app.set("trust proxy", config.nodeEnv === "production" ? 1 : false);
 app.use(helmet());
 app.use(
     cors({
