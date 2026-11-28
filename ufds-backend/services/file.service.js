@@ -135,6 +135,11 @@ export const listStoredFiles = async (ownerId) =>
       createdAt: file.createdAt,
     }));
 
+export const isLegacyStoredFile = async (ownerId, id) => {
+  if (!mongoose.isValidObjectId(id)) return false;
+  return Boolean(await File.exists({ _id: id, ownerId, status: "uploaded" }));
+};
+
 export const getDownloadStream = async (ownerId, id) => {
   if (!mongoose.isValidObjectId(id)) throw httpError(404, "File not found");
   const file = await File.findOne({

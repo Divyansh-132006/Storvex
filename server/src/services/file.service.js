@@ -24,6 +24,30 @@ import {
 } from "./distributedStorage.service.js";
 
 const storage = new LocalDiskAdapter();
+let uploadSequence = 0;
+
+function logUploadStage(uploadId, stage, details = {}) {
+  if (config.nodeEnv === "development") {
+    console.info(`[upload ${uploadId}] ${stage}`, details);
+  }
+}
+
+function safeUploadErrorDetails(error) {
+  const causes = [error, error?.cause, error?.cause?.cause].filter(Boolean);
+  const details = {};
+  const name = causes.find((cause) => typeof cause.name === "string")?.name;
+  const code = causes.find((cause) => Number.isInteger(cause.code) || (
+    typeof cause.code === "string" && /^[A-Z0-9_]{1,40}$/.test(cause.code)
+  ))?.code;
+  const validationPaths = Object.keys(error?.errors || {});
+  const duplicateKeyFields = Object.keys(error?.keyPattern || error?.keyValue || {});
+
+  if (name) details.errorName = name;
+  if (code !== undefined) details.errorCode = code;
+  if (validationPaths.length) details.validationPaths = validationPaths;
+  if (duplicateKeyFields.length) details.duplicateKeyFields = duplicateKeyFields;
+  return details;
+}
 
 export function sanitizeName(name) {
   return (
@@ -62,9 +86,16 @@ async function committedBytes(userId) {
 }
 
 export async function uploadFile(req) {
+  const uploadId = ++uploadSequence;
+  const uploadStartedAt = Date.now();
+  logUploadStage(uploadId, "request received");
+  const quotaStartedAt = Date.now();
   if ((await committedBytes(req.user.id)) >= config.maxUserStorageBytes) {
     throw new ApiError(413, "Storage quota exceeded");
   }
+  logUploadStage(uploadId, "quota check complete", {
+    durationMs: Date.now() - quotaStartedAt,
+  });
   const busboy = Busboy({
     headers: req.headers,
     limits: { files: 2, fileSize: config.maxFileSizeBytes + 1 },
@@ -81,25 +112,43 @@ export async function uploadFile(req) {
     }
     fileSeen = true;
     fileStream = stream;
+    logUploadStage(uploadId, "multipart file part received", {
+      elapsedMs: Date.now() - uploadStartedAt,
+    });
     filePromise = uploadDistributed(
       stream,
       info,
       req.user.id,
       String(req.headers["idempotency-key"] || "").slice(0, 200) || undefined,
     ).then(
-      (value) => ({ value }),
-      (error) => ({ error }),
+      (value) => {
+        logUploadStage(uploadId, "distributed upload complete", {
+          elapsedMs: Date.now() - uploadStartedAt,
+        });
+        return { value };
+      },
+      (error) => {
+        logUploadStage(uploadId, "distributed upload failed", {
+          elapsedMs: Date.now() - uploadStartedAt,
+          ...safeUploadErrorDetails(error),
+        });
+        return { error };
+      },
     );
-    stream.on("limit", () =>
-      stream.destroy(new ApiError(413, "File exceeds the maximum size")),
-    );
+    stream.on("limit", () => {
+      parseError = new ApiError(413, "File exceeds the maximum size");
+      if (!stream.destroyed) stream.destroy();
+    });
   });
   busboy.on("error", (error) => {
     parseError = error;
   });
   req.once("aborted", () => {
     parseError = new ApiError(400, "Upload was aborted");
-    if (fileStream && !fileStream.destroyed) fileStream.destroy(parseError);
+    logUploadStage(uploadId, "request aborted", {
+      elapsedMs: Date.now() - uploadStartedAt,
+    });
+    if (fileStream && !fileStream.destroyed) fileStream.destroy();
     if (!busboy.destroyed) busboy.destroy();
   });
   req.pipe(busboy);
@@ -239,19 +288,33 @@ export async function getDownload(userId, id) {
   }).lean();
   if (!file) throw new ApiError(404, "File not found");
   if (file.storageMode === "ec-4+1") return getDistributedDownload(file);
-  if (config.verifyCiphertextHashOnDownload) await verifyHash(file);
   const salt = Buffer.from(file.encryption.fileSalt, "base64");
+  const key = deriveFileKey(file._id, salt, file.encryption.keyVersion);
   const meta = decryptMetadata(
     file.metaEnc,
     deriveMetaKey(file._id, salt, file.encryption.keyVersion),
     file._id,
+  );
+  if (config.verifyCiphertextHashOnDownload) await verifyHash(file);
+  await pipeline(
+    storage.getStream(file.storageKey),
+    createDecryptStream({
+      key,
+      fileId: file._id,
+      unitCount: file.unitCount,
+    }),
+    new Writable({
+      write(chunk, encoding, callback) {
+        callback();
+      },
+    }),
   );
   return {
     file,
     meta,
     stream: storage.getStream(file.storageKey).pipe(
       createDecryptStream({
-        key: deriveFileKey(file._id, salt, file.encryption.keyVersion),
+        key,
         fileId: file._id,
         unitCount: file.unitCount,
       }),

@@ -5,7 +5,7 @@
   "type": "module",
   "main": "app.js",
   "scripts": {
-    "test": "node --check app.js && node --check server.js && node --check routes/file.routes.js && node --check controllers/file.controller.js && node --check services/file.service.js && node --check models/file.model.js",
+    "test": "node --check app.js && node --check server.js && node --check routes/file.routes.js && node --check controllers/file.controller.js && node --check services/file.service.js && node --check services/distributedStorageProxy.service.js && node --check config/startupChecks.js && node --test",
     "start": "node server.js",
     "dev": "nodemon server.js",
     "db:indexes": "node scripts/create-indexes.js"

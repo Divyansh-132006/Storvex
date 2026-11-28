@@ -1,6 +1,14 @@
+import dns from "node:dns";
 import dotenv from "dotenv";
+import { assertStorageProviderConfig } from "./startupChecks.js";
 
 dotenv.config();
+
+const configuredDnsServers = process.env.MONGODB_DNS_SERVERS
+  ?.split(",")
+  .map((server) => server.trim())
+  .filter(Boolean);
+if (configuredDnsServers?.length) dns.setServers(configuredDnsServers);
 
 const required = ["MONGODB_URI", "JWT_ACCESS_SECRET", "GOOGLE_CLIENT_ID"];
 
@@ -37,6 +45,7 @@ export const config = Object.freeze({
   nodeEnv,
   mongoUri: process.env.MONGODB_URI,
   accessSecret: process.env.JWT_ACCESS_SECRET,
+  internalServiceToken: process.env.INTERNAL_SERVICE_TOKEN?.trim() || "",
   accessTokenTtl: process.env.ACCESS_TOKEN_TTL || "15m",
   refreshTokenTtlDays: Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7),
   clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
@@ -63,3 +72,8 @@ export const config = Object.freeze({
   enableFaultInjection:
     nodeEnv !== "production" && process.env.ENABLE_FAULT_INJECTION === "true",
 });
+
+assertStorageProviderConfig(process.env);
+if (nodeEnv === "production" && Buffer.byteLength(process.env.INTERNAL_SERVICE_TOKEN?.trim() || "") < 32) {
+  throw new Error("INTERNAL_SERVICE_TOKEN must be at least 32 bytes in production");
+}

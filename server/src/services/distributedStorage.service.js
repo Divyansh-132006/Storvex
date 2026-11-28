@@ -23,6 +23,12 @@ function hash(buffer) {
   return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
+function logUploadStage(stage, details = {}) {
+  if (config.nodeEnv === "development") {
+    console.info(`[storage upload] ${stage}`, details);
+  }
+}
+
 async function putShard(shard, bytes) {
   const provider = providers[shard.position];
   const result = await provider.putObject(shard.objectKey, bytes);
@@ -58,10 +64,15 @@ export async function uploadDistributed(input, info, userId, idempotencyKey) {
     storageKey: crypto.randomBytes(32).toString("hex"),
     idempotencyKey: idempotencyKey || undefined,
   });
-  await doc.save();
   const uploaded = [];
   let sourcePipeline;
   try {
+    const metadataStartedAt = Date.now();
+    logUploadStage("metadata save started");
+    await doc.save();
+    logUploadStage("metadata save complete", {
+      durationMs: Date.now() - metadataStartedAt,
+    });
     let originalSize = 0;
     let ciphertextSize = 0;
     let unitCount = 0;
@@ -89,11 +100,23 @@ export async function uploadDistributed(input, info, userId, idempotencyKey) {
     for await (const block of splitter) {
       blocks.push(block);
       if (blocks.length < 4) continue;
+      const groupStartedAt = Date.now();
+      logUploadStage("provider group write started", { groupNo: groupCount });
       await storeGroup(blocks, groupCount++, fileId, userId, uploaded);
+      logUploadStage("provider group write complete", {
+        durationMs: Date.now() - groupStartedAt,
+      });
       blocks = [];
     }
     await sourcePipeline;
-    if (blocks.length) await storeGroup(blocks, groupCount++, fileId, userId, uploaded);
+    if (blocks.length) {
+      const groupStartedAt = Date.now();
+      logUploadStage("provider group write started", { groupNo: groupCount });
+      await storeGroup(blocks, groupCount++, fileId, userId, uploaded);
+      logUploadStage("provider group write complete", {
+        durationMs: Date.now() - groupStartedAt,
+      });
+    }
     unitCount = Math.max(1, Math.ceil(originalSize / config.unitSize));
     const [quota] = await File.aggregate([
       { $match: { user_id: new mongoose.Types.ObjectId(userId), status: "committed" } },
@@ -123,7 +146,10 @@ export async function uploadDistributed(input, info, userId, idempotencyKey) {
     if (sourcePipeline) await Promise.allSettled([sourcePipeline]);
     await Promise.allSettled(uploaded.map(async (shard) => providers[shard.position].deleteObject(shard.objectKey)));
     await Shard.deleteMany({ fileId });
-    await File.updateOne({ _id: fileId }, { $set: { status: "failed" } });
+    await File.updateOne(
+      { _id: fileId },
+      { $set: { status: "failed" }, $unset: { idempotencyKey: 1 } },
+    );
     throw error;
   }
 }
@@ -154,7 +180,13 @@ async function storeGroup(blocks, groupNo, fileId, userId, uploaded) {
       await Shard.updateOne({ _id: docs[index]._id }, { $set: { status: "verified", lastVerifiedAt: docs[index].lastVerifiedAt } });
     }));
     const verified = results.filter((result) => result.status === "fulfilled").length;
-    if (verified < config.uploadMinShardsPerGroup) throw new Error("Not enough verified shards for upload");
+    if (verified < config.uploadMinShardsPerGroup) {
+      const firstRejected = results.find((result) => result.status === "rejected");
+      const reason = firstRejected?.reason instanceof Error
+        ? firstRejected.reason.message.slice(0, 160)
+        : "unknown provider error";
+      throw new Error(`Not enough verified shards for upload: ${reason}`);
+    }
     await Promise.all(results.map((result, index) => result.status === "rejected"
       ? Shard.updateOne({ _id: docs[index]._id }, { $set: { status: "missing" } })
       : Promise.resolve()));

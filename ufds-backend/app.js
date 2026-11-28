@@ -50,13 +50,19 @@ app.get("/api/health", (req, res) => {
 
 app.use((error, req, res, next) => {
   if (res.headersSent) return next(error);
-  const status = error.statusCode && error.statusCode >= 400 && error.statusCode < 500
+  const status = error.statusCode && error.statusCode >= 400 && error.statusCode <= 599
     ? error.statusCode
     : 500;
-  if (status === 500) console.error("Unhandled request error", error.message);
+  if (status >= 500) {
+    const cause = error.cause?.cause || error.cause;
+    console.error("Unhandled request error", error.message, {
+      causeName: error.cause?.name,
+      causeCode: typeof cause?.code === "string" ? cause.code : undefined,
+    });
+  }
   return res.status(status).json({
     success: false,
-    message: status === 500 ? "Internal server error" : error.message,
+    message: status >= 500 ? "Internal server error" : error.message,
   });
 });
 

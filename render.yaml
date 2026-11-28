@@ -1,11 +1,83 @@
 services:
   - type: web
+    name: storvex-storage
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+      - key: MONGODB_URI
+      - key: MONGODB_DNS_SERVERS
+      - key: JWT_ACCESS_SECRET
+      - key: INTERNAL_SERVICE_TOKEN
+      - key: GOOGLE_CLIENT_ID
+      - key: CLIENT_URL
+      - key: MASTER_KEY_V1
+      - key: CURRENT_KEY_VERSION
+      - key: MAX_FILE_SIZE_MB
+      - key: MAX_USER_STORAGE_MB
+      - key: PROVIDER_1_TYPE
+      - key: PROVIDER_1_ENDPOINT
+      - key: PROVIDER_1_REGION
+      - key: PROVIDER_1_BUCKET
+      - key: PROVIDER_1_ACCESS_KEY_ID
+      - key: PROVIDER_1_SECRET_ACCESS_KEY
+      - key: PROVIDER_1_ACCOUNT_ID
+      - key: PROVIDER_1_FORCE_PATH_STYLE
+      - key: PROVIDER_2_TYPE
+      - key: PROVIDER_2_ENDPOINT
+      - key: PROVIDER_2_REGION
+      - key: PROVIDER_2_BUCKET
+      - key: PROVIDER_2_ACCESS_KEY_ID
+      - key: PROVIDER_2_SECRET_ACCESS_KEY
+      - key: PROVIDER_2_ACCOUNT_ID
+      - key: PROVIDER_2_FORCE_PATH_STYLE
+      - key: PROVIDER_3_TYPE
+      - key: PROVIDER_3_ENDPOINT
+      - key: PROVIDER_3_REGION
+      - key: PROVIDER_3_BUCKET
+      - key: PROVIDER_3_ACCESS_KEY_ID
+      - key: PROVIDER_3_SECRET_ACCESS_KEY
+      - key: PROVIDER_3_ACCOUNT_ID
+      - key: PROVIDER_3_FORCE_PATH_STYLE
+      - key: PROVIDER_4_TYPE
+      - key: PROVIDER_4_ENDPOINT
+      - key: PROVIDER_4_REGION
+      - key: PROVIDER_4_BUCKET
+      - key: PROVIDER_4_ACCESS_KEY_ID
+      - key: PROVIDER_4_SECRET_ACCESS_KEY
+      - key: PROVIDER_4_ACCOUNT_ID
+      - key: PROVIDER_4_FORCE_PATH_STYLE
+      - key: PROVIDER_5_TYPE
+      - key: PROVIDER_5_ENDPOINT
+      - key: PROVIDER_5_REGION
+      - key: PROVIDER_5_BUCKET
+      - key: PROVIDER_5_ACCESS_KEY_ID
+      - key: PROVIDER_5_SECRET_ACCESS_KEY
+      - key: PROVIDER_5_ACCOUNT_ID
+      - key: PROVIDER_5_FORCE_PATH_STYLE
+
+  - type: web
     name: storvexx-backend
     runtime: node
     rootDir: ufds-backend
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+      - key: MONGODB_URI
+      - key: JWT_ACCESS_SECRET
+      - key: JWT_REFRESH_SECRET
+      - key: INTERNAL_SERVICE_TOKEN
+      - key: DISTRIBUTED_STORAGE_URL
+      - key: GOOGLE_CLIENT_ID
+      - key: GOOGLE_CLIENT_SECRET
+      - key: GOOGLE_CALLBACK_URL
+      - key: FRONTEND_URL
+      - key: ALLOW_LEGACY_UPLOAD
 
   - type: web
     name: storvex-frontend
@@ -13,6 +85,8 @@ services:
     rootDir: ufds-frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
     routes:
       - type: rewrite
         source: /*

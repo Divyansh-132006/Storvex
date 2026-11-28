@@ -15,7 +15,11 @@ export default class S3CompatibleAdapter extends ProviderAdapter {
       endpoint: options.endpoint || undefined,
       region: options.region,
       forcePathStyle: options.forcePathStyle,
-      credentials: { accessKeyId: options.accessKeyId, secretAccessKey: options.secretAccessKey },
+      credentials: options.accessKeyId && options.secretAccessKey
+        ? { accessKeyId: options.accessKeyId, secretAccessKey: options.secretAccessKey }
+        : undefined,
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
     });
   }
 

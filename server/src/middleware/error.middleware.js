@@ -3,6 +3,8 @@ export function notFoundHandler(req, res, next) {
 }
 
 export function errorHandler(err, req, res, next) {
+  if (req.aborted || res.destroyed) return;
+
   const statusCode = err.statusCode || 500;
   const message = statusCode >= 500 ? "Internal server error" : err.message;
 

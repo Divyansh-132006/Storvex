@@ -38,6 +38,9 @@ app.use(hpp());
 app.use("/api/auth", authRoutes);
 app.use("/api/files", fileRoutes);
 app.use("/api/admin", adminRoutes);
+app.get("/api/health", (req, res) => {
+  res.json({ success: true, status: "healthy", service: "storvex-4plus1" });
+});
 app.use(notFoundHandler);
 app.use(errorHandler);
 

@@ -70,6 +70,61 @@ offline one provider, download successfully through parity, then run repair.
 The upload path keeps at most two groups in flight by default; a manual 1 GB
 test should confirm memory remains approximately constant.
 
+### Keeping the existing frontend and authentication gateway
+
+Deploy in this order: (1) the `storvex-storage` service, (2) the
+`storvexx-backend` gateway, then (3) the frontend. Set the gateway's
+`DISTRIBUTED_STORAGE_URL` to the storage service's HTTPS base URL. Set the
+same `JWT_ACCESS_SECRET`, `MONGODB_URI`, and high-entropy
+`INTERNAL_SERVICE_TOKEN` on both backend services. The gateway forwards the
+user access JWT and adds the internal token; the storage API rejects direct
+file requests without both. Keep the token server-side and never expose it to
+the frontend.
+
+The storage service also needs `NODE_ENV=production`, `MASTER_KEY_V1`,
+`CURRENT_KEY_VERSION`, `GOOGLE_CLIENT_ID`, `CLIENT_URL`, and explicitly set
+`PROVIDER_1_TYPE` through `PROVIDER_5_TYPE`. For real cloud storage, set each
+provider type to `s3` and supply the matching `PROVIDER_N_BUCKET`,
+`PROVIDER_N_REGION`, optional `PROVIDER_N_ENDPOINT`, and credentials (or
+configure the hosting platform's supported AWS credential provider). Never
+set `ALLOW_SIMULATED_PROVIDERS=true` for a production deployment using real
+cloud failure domains. The gateway needs its MongoDB/JWT settings,
+`INTERNAL_SERVICE_TOKEN`, `DISTRIBUTED_STORAGE_URL`, Google OAuth values, and
+the production frontend URL. The frontend needs `VITE_API_URL` pointing to the
+gateway.
+
+The storage service warns if multiple provider slots share an endpoint and
+account. Set `PROVIDER_N_ACCOUNT_ID` when different credentials belong to the
+same cloud account so the warning can identify shared failure domains; the
+account identifier is not a credential.
+
+The 4+1 server stores its file metadata in the `distributedfiles` collection,
+separate from legacy GridFS records. The gateway merges both file lists and
+continues serving existing GridFS files.
+
+On startup, the 4+1 service copies any pre-existing distributed metadata from
+the old `files` collection into `distributedfiles` without deleting the source
+records; this keeps files created by an earlier standalone deployment readable.
+
+For local use, run the 4+1 server on a different port from the gateway (for
+example, 5001), set `DISTRIBUTED_STORAGE_URL=http://localhost:5001` in
+`ufds-backend/.env`, and set the same `INTERNAL_SERVICE_TOKEN` in both backend
+`.env` files. Production startup fails if the gateway lacks a distributed
+storage URL or either service lacks the internal token. The gateway's legacy
+single-GridFS upload path is disabled by default; only explicitly set
+`ALLOW_LEGACY_UPLOAD=true` to enable it outside a production configuration.
+
+The checked-in `render.yaml` declares environment variable names only. Add
+secret values in the Render dashboard; do not commit them to YAML or source.
+
+Both storage and gateway downloads perform a complete decrypt/authentication
+pass before starting the response, then stream a second pass to the client.
+They use bounded stream buffers rather than buffering the whole plaintext or
+writing temporary plaintext files. The 100 MiB heap/RSS measurement and
+provider/erasure checks are available with `npm run verify:system` from
+`server`; the harness uses an isolated in-memory MongoDB and deletes its test
+files and random provider objects afterward.
+
 ### 2. Client
 
 ```powershell

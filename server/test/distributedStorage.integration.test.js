@@ -28,6 +28,7 @@ let encryptMetadata;
 let deriveFileKey;
 let deriveMetaKey;
 let createEncryptStream;
+let ensureFileIndexes;
 let server;
 let baseUrl;
 let storageDir;
@@ -39,7 +40,11 @@ function token(id) {
 function authHeaders(id) {
   const requestId = requestCount++;
   const ip = `198.18.${Math.floor(requestId / 254)}.${(requestId % 254) + 1}`;
-  return { Authorization: `Bearer ${token(id)}`, "X-Forwarded-For": ip };
+  return {
+    Authorization: `Bearer ${token(id)}`,
+    "X-Internal-Service-Token": process.env.INTERNAL_SERVICE_TOKEN,
+    "X-Forwarded-For": ip,
+  };
 }
 
 async function upload(data, { as = userId(), filename = "sample.bin" } = {}) {
@@ -107,6 +112,7 @@ before(async () => {
     NODE_ENV: "test",
     MONGODB_URI: uri,
     JWT_ACCESS_SECRET: "integration-test-secret",
+    INTERNAL_SERVICE_TOKEN: "integration-test-internal-service-token",
     GOOGLE_CLIENT_ID: "integration-test-client",
     MASTER_KEY_V1: masterKey.toString("base64"),
     CURRENT_KEY_VERSION: "1",
@@ -130,6 +136,7 @@ before(async () => {
   ({ default: app } = await import("../src/app.js"));
   ({ default: providers } = await import("../src/providers/registry.js"));
   ({ default: File } = await import("../src/models/File.js"));
+  ({ ensureFileIndexes } = await import("../src/services/fileIndexMigration.service.js"));
   ({ default: Shard } = await import("../src/models/Shard.js"));
   ({ default: Event } = await import("../src/models/Event.js"));
   ({ config } = await import("../src/config/env.js"));
@@ -140,7 +147,7 @@ before(async () => {
   ({ createEncryptStream } = await import("../src/crypto/unitCipher.js"));
 
   await mongoose.connect(uri);
-  await Promise.all([File.init(), Shard.init(), Event.init()]);
+  await Promise.all([ensureFileIndexes(), Shard.init(), Event.init()]);
   server = createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -170,6 +177,29 @@ test("round trips all requested sizes byte-for-byte", async () => {
     assert.equal(result.response.status, 200, `download of ${size} bytes`);
     assert.deepEqual(result.bytes, original, `round trip of ${size} bytes`);
   }
+});
+
+test("migrates the sparse idempotency index and permits multiple uploads without a key", async () => {
+  await File.collection.dropIndex("user_id_1_idempotencyKey_1");
+  await File.collection.createIndex(
+    { user_id: 1, idempotencyKey: 1 },
+    { unique: true, sparse: true },
+  );
+  await ensureFileIndexes();
+
+  const index = (await File.collection.indexes()).find(
+    (candidate) => candidate.name === "user_id_1_idempotencyKey_1",
+  );
+  assert.equal(index.unique, true);
+  assert.deepEqual(index.partialFilterExpression, {
+    idempotencyKey: { $type: "string" },
+  });
+
+  const as = userId();
+  const first = await upload(Buffer.from("first upload"), { as });
+  const second = await upload(Buffer.from("second upload"), { as });
+  assert.equal(first.response.status, 201);
+  assert.equal(second.response.status, 201);
 });
 
 test("persists exactly five full-size shards for every group", async () => {
@@ -317,6 +347,7 @@ test("client abort during upload leaves no pending file or orphan shards", async
     method: "POST",
     headers: {
       Authorization: `Bearer ${token(as)}`,
+      "X-Internal-Service-Token": process.env.INTERNAL_SERVICE_TOKEN,
       "X-Forwarded-For": "198.18.255.1",
       "Content-Type": `multipart/form-data; boundary=${boundary}`,
     },
@@ -331,7 +362,7 @@ test("client abort during upload leaves no pending file or orphan shards", async
     await delay(2);
   }
   let uploadedShards = 0;
-  for (let attempt = 0; attempt < 50; attempt += 1) {
+  for (let attempt = 0; attempt < 300; attempt += 1) {
     uploadedShards = await Shard.countDocuments({ userId: as });
     if (uploadedShards >= 5) break;
     await delay(100);
@@ -351,6 +382,67 @@ test("client abort during upload leaves no pending file or orphan shards", async
   assert.equal((await storedProviderFiles()).flat().length, 0);
 });
 
+test("early client abort during metadata save does not crash the storage server", async () => {
+  const as = userId();
+  const boundary = "early-abort-test-boundary";
+  const originalSave = File.prototype.save;
+  let releaseSave;
+  let saveStarted;
+  let delayedSave = false;
+  saveStarted = new Promise((resolve) => {
+    releaseSave = resolve;
+  });
+  File.prototype.save = function (...args) {
+    if (delayedSave) return originalSave.apply(this, args);
+    delayedSave = true;
+    releaseSave();
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        originalSave.apply(this, args).then(resolve, reject);
+      }, 100);
+    });
+  };
+
+  const request = httpRequest(`${baseUrl}/api/files/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token(as)}`,
+      "X-Internal-Service-Token": process.env.INTERNAL_SERVICE_TOKEN,
+      "X-Forwarded-For": "198.18.255.2",
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    },
+  });
+  request.on("error", () => {});
+
+  try {
+    request.write(
+      `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="early-abort.bin"\r\nContent-Type: application/octet-stream\r\n\r\npartial`,
+    );
+    await Promise.race([
+      saveStarted,
+      delay(2000).then(() => {
+        throw new Error("Upload metadata save did not start");
+      }),
+    ]);
+    request.destroy();
+  } finally {
+    request.destroy();
+    File.prototype.save = originalSave;
+  }
+
+  let files = [];
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    files = await File.find({ user_id: as }).lean();
+    if (files.length === 1 && files[0].status !== "pending") break;
+    await delay(100);
+  }
+  assert.equal(files.length, 1);
+  assert.equal(files[0].status, "failed");
+  assert.equal(await Shard.countDocuments({ userId: as }), 0);
+  assert.equal((await storedProviderFiles()).flat().length, 0);
+  assert.equal((await fetch(`${baseUrl}/api/health`)).status, 200);
+});
+
 test("another user gets 404 and unauthenticated callers get 401 for download, health, and delete", async () => {
   const { body } = await upload(Buffer.from("owner only"));
   const other = userId();
@@ -365,6 +457,35 @@ test("another user gets 404 and unauthenticated callers get 401 for download, he
     const unauthenticated = await fetch(url, { method, headers: { "X-Forwarded-For": `198.18.254.${requestCount++ % 254 + 1}` } });
     assert.equal(unauthenticated.status, 401, `${method} ${suffix}`);
   }
+});
+
+test("direct storage calls require the internal token and preserve owner checks", async () => {
+  const { body, as: ownerId } = await upload(Buffer.from("direct-call guard"));
+  const ownerHeaders = authHeaders(ownerId);
+  const missingServiceToken = { ...ownerHeaders };
+  delete missingServiceToken["X-Internal-Service-Token"];
+
+  const unauthenticatedServiceCall = await fetch(
+    `${baseUrl}/api/files/${body.file.id}/download`,
+    { headers: missingServiceToken },
+  );
+  assert.equal(unauthenticatedServiceCall.status, 401);
+
+  const invalidServiceToken = {
+    ...ownerHeaders,
+    "X-Internal-Service-Token": "invalid-internal-service-token",
+  };
+  const rejectedServiceCall = await fetch(
+    `${baseUrl}/api/files/${body.file.id}/download`,
+    { headers: invalidServiceToken },
+  );
+  assert.equal(rejectedServiceCall.status, 401);
+
+  const otherOwnerCall = await fetch(
+    `${baseUrl}/api/files/${body.file.id}/download`,
+    { headers: authHeaders(userId()) },
+  );
+  assert.equal(otherOwnerCall.status, 404);
 });
 
 test("legacy single-storage files remain downloadable", async () => {
@@ -413,6 +534,55 @@ test("legacy single-storage files remain downloadable", async () => {
   const result = await downloaded(String(id), as);
   assert.equal(result.response.status, 200);
   assert.deepEqual(result.bytes, original);
+});
+
+test("legacy download authenticates every encrypted unit before sending plaintext", async () => {
+  const id = new mongoose.Types.ObjectId();
+  const as = userId();
+  const salt = crypto.randomBytes(32);
+  const keyVersion = config.currentKeyVersion;
+  const original = Buffer.from("legacy authenticated download");
+  const encrypted = [];
+  const { Readable } = await import("node:stream");
+  const { pipeline } = await import("node:stream/promises");
+  await pipeline(
+    Readable.from([original]),
+    createEncryptStream({ key: deriveFileKey(id, salt, keyVersion), fileId: id }),
+    async function* (source) {
+      for await (const chunk of source) encrypted.push(chunk);
+    },
+  );
+  const ciphertext = Buffer.concat(encrypted);
+  ciphertext[0] ^= 0x40;
+  const storageKey = crypto.randomBytes(32).toString("hex");
+  const storage = new LocalDiskAdapter(storageDir);
+  await storage.putStream(storageKey, Readable.from([ciphertext]));
+  await File.create({
+    _id: id,
+    user_id: as,
+    status: "committed",
+    storageMode: "single",
+    originalSize: original.length,
+    unitSize: config.unitSize,
+    unitCount: 1,
+    ciphertextSize: ciphertext.length,
+    encryption: {
+      algo: "chacha20-poly1305",
+      keyVersion,
+      fileSalt: salt.toString("base64"),
+    },
+    metaEnc: encryptMetadata(
+      { name: "tampered.txt", mime: "text/plain" },
+      deriveMetaKey(id, salt, keyVersion),
+      id,
+    ),
+    ciphertextSha256: crypto.createHash("sha256").update(ciphertext).digest("hex"),
+    storageKey,
+  });
+
+  const result = await downloaded(String(id), as);
+  assert.equal(result.response.status, 500);
+  assert.equal(result.bytes.includes(original), false);
 });
 
 test("repair worker is idempotent across repeated runs", async () => {

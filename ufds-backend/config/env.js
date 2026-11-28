@@ -1,4 +1,12 @@
+import dns from "node:dns";
 import "dotenv/config";
+import { assertGatewayProductionConfig } from "./startupChecks.js";
+
+const configuredDnsServers = process.env.MONGODB_DNS_SERVERS
+  ?.split(",")
+  .map((server) => server.trim())
+  .filter(Boolean);
+if (configuredDnsServers?.length) dns.setServers(configuredDnsServers);
 
 const required = (name) => {
   const value = process.env[name];
@@ -44,9 +52,20 @@ export const config = {
   googleClientId: optional("GOOGLE_CLIENT_ID"),
   googleClientSecret: optional("GOOGLE_CLIENT_SECRET"),
   googleCallbackUrl,
+  distributedStorageUrl: normalizeUrl(optional("DISTRIBUTED_STORAGE_URL")),
+  internalServiceToken: optional("INTERNAL_SERVICE_TOKEN"),
+  allowLegacyUpload: optional("ALLOW_LEGACY_UPLOAD") === "true",
+  distributedStorageTimeoutMs: Number(
+    process.env.DISTRIBUTED_STORAGE_TIMEOUT_MS || 900000,
+  ),
   accessTokenTtl: process.env.JWT_ACCESS_EXPIRES_IN || process.env.JWT_EXPIRES_IN || "15m",
   refreshTokenTtlDays: Number(process.env.JWT_REFRESH_EXPIRES_DAYS || 30),
   maxFileSizeBytes: Number(process.env.MAX_FILE_SIZE_MB || 500) * 1024 * 1024,
 };
 
 export const isProduction = config.nodeEnv === "production";
+assertGatewayProductionConfig({
+  NODE_ENV: config.nodeEnv,
+  DISTRIBUTED_STORAGE_URL: config.distributedStorageUrl,
+  INTERNAL_SERVICE_TOKEN: config.internalServiceToken,
+});

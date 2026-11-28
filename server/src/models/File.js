@@ -25,7 +25,7 @@ const fileSchema = new mongoose.Schema(
     erasure: {
       scheme: { type: String, enum: ["4+1"], default: "4+1" },
     },
-    idempotencyKey: { type: String, sparse: true },
+    idempotencyKey: { type: String },
     encryption: {
       algo: { type: String, enum: ["chacha20-poly1305"], required: true },
       keyVersion: { type: Number, min: 1, required: true },
@@ -40,9 +40,15 @@ const fileSchema = new mongoose.Schema(
       match: /^[a-f0-9]{32,128}$/,
     },
   },
-  { versionKey: false },
+  { versionKey: false, autoIndex: false },
 );
 
 fileSchema.index({ user_id: 1, createdAt: -1 });
-fileSchema.index({ user_id: 1, idempotencyKey: 1 }, { unique: true, sparse: true });
-export default mongoose.model("File", fileSchema);
+fileSchema.index(
+  { user_id: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idempotencyKey: { $type: "string" } },
+  },
+);
+export default mongoose.model("File", fileSchema, "distributedfiles");

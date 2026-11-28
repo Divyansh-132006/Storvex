@@ -1,4 +1,5 @@
 import express from "express";
+import { requireInternalService } from "../middleware/internalService.middleware.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 import { refreshLimiter } from "../middleware/rateLimit.middleware.js";
 import {
@@ -10,7 +11,7 @@ import {
 } from "../controllers/file.controller.js";
 
 const router = express.Router();
-router.use(requireAuth);
+router.use(requireInternalService, requireAuth);
 router.post("/upload", refreshLimiter, upload);
 router.get("/", list);
 router.get("/:id/health", health);

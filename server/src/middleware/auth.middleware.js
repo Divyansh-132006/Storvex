@@ -9,6 +9,13 @@ export function requireAuth(req, res, next) {
 
   try {
     const payload = verifyAccessToken(authorization.slice(7));
+    if (
+      typeof payload.sub !== "string" ||
+      !/^[a-f\d]{24}$/i.test(payload.sub) ||
+      (payload.type !== undefined && payload.type !== "access")
+    ) {
+      throw new Error("Invalid access token claims");
+    }
     req.user = { id: payload.sub, role: payload.role };
     next();
   } catch {
