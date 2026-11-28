@@ -1,4 +1,4 @@
-import { HashRouter, Routes, Route } from "react-router-dom"
+import { BrowserRouter, Routes, Route } from "react-router-dom"
 import Home from "./pages/Home";
 import UploadPage from "./pages/UploadPage";
 import Dashboard from "./pages/Dashboard";
@@ -12,10 +12,12 @@ import MyFiles from "./pages/MyFiles";
 import SharedFiles from "./pages/SharedFiles";
 import Settings from "./pages/Settings";
 import UpgradeStorage from "./pages/UpgradeStorage";
+import SharePage from "./pages/SharePage";
 function App() {
   return (
-    <HashRouter>
+    <BrowserRouter>
       <Routes>
+        <Route path="/s/:token" element={<SharePage />} />
         <Route element={<MainLayout />}>
         <Route path="/" element={<Home />} />
         <Route path="/features" element={<Features />} />
@@ -33,7 +35,7 @@ function App() {
          <Route path="/signup" element={<Signup />} />
          <Route path="/login" element={<Login />} />
       </Routes>
-    </HashRouter>
+    </BrowserRouter>
   );
 }
 

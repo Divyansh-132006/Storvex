@@ -4,6 +4,7 @@ import { pipeline } from "node:stream/promises";
 import Busboy from "busboy";
 import mongoose from "mongoose";
 import File from "../models/File.js";
+import ShareLink from "../models/ShareLink.js";
 import ApiError from "../utils/ApiError.js";
 import { config } from "../config/env.js";
 import {
@@ -335,6 +336,7 @@ export async function deleteFile(userId, id) {
   } else {
     await storage.delete(file.storageKey);
   }
+  await ShareLink.deleteMany({ fileId: file._id });
   await File.deleteOne({ _id: file._id });
 }
 

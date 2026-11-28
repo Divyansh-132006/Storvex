@@ -7,6 +7,9 @@ const responseHeaders = [
   "content-length",
   "content-disposition",
   "x-content-type-options",
+  "cache-control",
+  "referrer-policy",
+  "x-robots-tag",
 ];
 
 export async function requestDistributedStorage(req, path, options = {}) {
@@ -18,9 +21,13 @@ export async function requestDistributedStorage(req, path, options = {}) {
 
   const headers = {};
   const authorization = req.get("authorization");
-  if (authorization) headers.authorization = authorization;
+  if (authorization && options.forwardAuthorization !== false)
+    headers.authorization = authorization;
   if (config.internalServiceToken) {
     headers["x-internal-service-token"] = config.internalServiceToken;
+  }
+  if (options.forwardClientIp) {
+    headers["x-internal-client-ip"] = req.ip;
   }
 
   if (options.streamBody) {
@@ -31,19 +38,26 @@ export async function requestDistributedStorage(req, path, options = {}) {
     if (contentLength) headers["content-length"] = contentLength;
     if (idempotencyKey) headers["idempotency-key"] = idempotencyKey;
   }
+  if (options.jsonBody !== undefined) {
+    headers["content-type"] = "application/json";
+  }
 
   const request = {
     method: options.method || req.method,
     headers,
-    signal: AbortSignal.timeout(config.distributedStorageTimeoutMs),
+    signal: options.signal || AbortSignal.timeout(config.distributedStorageTimeoutMs),
   };
   if (options.streamBody) {
     request.body = Readable.toWeb(req);
     request.duplex = "half";
   }
+  if (options.jsonBody !== undefined) {
+    request.body = JSON.stringify(options.jsonBody);
+  }
 
   try {
-    return await fetch(`${config.distributedStorageUrl}/api/files${path}`, request);
+    const basePath = options.basePath || "/api/files";
+    return await fetch(`${config.distributedStorageUrl}${basePath}${path}`, request);
   } catch (cause) {
     const rootCause = cause?.cause || cause;
     const causeName = typeof cause?.name === "string" ? cause.name : "unknown";

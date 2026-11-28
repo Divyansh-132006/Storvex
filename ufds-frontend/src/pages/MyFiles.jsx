@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Download, File, FileArchive, FileText, Image, Search, Trash2, Upload } from "lucide-react";
+import { Download, File, FileArchive, FileText, Image, Search, Share2, Trash2, Upload } from "lucide-react";
 import { apiFetch } from "../auth/authStore";
+import ShareDialog from "../components/ShareDialog";
 
 const formatSize = (bytes) => {
   if (!bytes) return "0 B";
@@ -23,6 +24,7 @@ function MyFiles() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState(null);
+  const [shareFile, setShareFile] = useState(null);
 
   const loadFiles = async () => {
     try {
@@ -129,6 +131,14 @@ function MyFiles() {
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <button
+                      onClick={() => setShareFile(file)}
+                      disabled={busyId === file.id}
+                      className="rounded-lg p-2 text-gray-400 hover:bg-[#262626] hover:text-[#B7F542] disabled:opacity-50"
+                      aria-label={`Share ${file.name}`}
+                    >
+                      <Share2 size={18} />
+                    </button>
+                    <button
                       onClick={() => downloadFile(file)}
                       disabled={busyId === file.id}
                       className="rounded-lg p-2 text-gray-400 hover:bg-[#262626] hover:text-white disabled:opacity-50"
@@ -151,6 +161,7 @@ function MyFiles() {
           </div>
         )}
       </section>
+      {shareFile && <ShareDialog file={shareFile} onClose={() => setShareFile(null)} />}
     </main>
   );
 }

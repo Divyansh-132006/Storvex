@@ -20,3 +20,32 @@ Master key loss makes stored files unrecoverable, so back up keys securely. A ma
 correlated provider failures. Five GridFS buckets in one MongoDB/Atlas cluster
 are not independent failure domains. SHA-256 is detection, not authentication;
 protect the stored hashes and rely on ChaCha20-Poly1305 for final integrity.
+
+## Share-link security
+
+Share tokens are generated from 32 cryptographically random bytes (256 bits)
+and encoded as base64url. The owner sees the token only once, in the returned
+share URL. MongoDB stores only the token's SHA-256 hash; public lookups hash
+the presented token before querying. Tokens and complete share URLs must not
+be logged. Optional link passwords are stored as bcrypt hashes.
+
+Unknown, revoked, expired, exhausted, deleted-file, and non-committed-file
+links all return the same `404 {"success":false,"message":"Link not available"}`
+response. Wrong passwords return a generic `401`; repeated password failures
+are limited per token and client IP and delayed. Public info and download
+requests have per-IP rate limits, no-store/referrer/noindex headers, and
+browser content sniffing is disabled.
+
+Download limits are claimed atomically before a download begins, so concurrent
+requests cannot exceed the configured limit. If the verified download fails
+before response bytes are sent, the claim is released. Link records are removed
+seven days after expiry, and file deletion immediately removes associated
+links. The storage service authenticates gateway calls with the
+`INTERNAL_SERVICE_TOKEN` using constant-time comparison. Public share requests
+do not carry a user JWT; direct storage requests without the internal service
+credential are rejected.
+
+A share link is a bearer credential: anyone who receives or forwards it can
+download the file until expiry, revocation, or its download limit is reached.
+Sharing does not re-encrypt the file for each recipient, and revoking a link
+cannot invalidate copies already downloaded.

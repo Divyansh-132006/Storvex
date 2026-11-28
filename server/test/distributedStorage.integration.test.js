@@ -21,6 +21,7 @@ let providers;
 let File;
 let Shard;
 let Event;
+let ShareLink;
 let config;
 let signAccessToken;
 let LocalDiskAdapter;
@@ -66,6 +67,33 @@ async function downloaded(id, as) {
   return { response, bytes: Buffer.from(await response.arrayBuffer()) };
 }
 
+function shareHeaders(ip = `198.18.240.${(requestCount++ % 254) + 1}`) {
+  return {
+    "X-Internal-Service-Token": process.env.INTERNAL_SERVICE_TOKEN,
+    "X-Internal-Client-IP": ip,
+    "X-Forwarded-For": ip,
+  };
+}
+
+async function createShare(fileId, as, body = { expiresIn: "24h" }) {
+  const response = await fetch(`${baseUrl}/api/files/${fileId}/shares`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(as),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  return { response, body: await response.json() };
+}
+
+async function shareRequest(tokenValue, suffix, options = {}) {
+  return fetch(`${baseUrl}/api/share/${tokenValue}/${suffix}`, {
+    ...options,
+    headers: { ...shareHeaders(), ...(options.headers || {}) },
+  });
+}
+
 async function storedProviderFiles() {
   const counts = [];
   for (let index = 0; index < 5; index += 1) {
@@ -83,6 +111,7 @@ async function clearDatabase() {
     File.deleteMany({}),
     Shard.deleteMany({}),
     Event.deleteMany({}),
+    ShareLink.deleteMany({}),
   ]);
   for (let index = 0; index < 5; index += 1) {
     await Promise.all([
@@ -139,6 +168,7 @@ before(async () => {
   ({ ensureFileIndexes } = await import("../src/services/fileIndexMigration.service.js"));
   ({ default: Shard } = await import("../src/models/Shard.js"));
   ({ default: Event } = await import("../src/models/Event.js"));
+  ({ default: ShareLink } = await import("../src/models/ShareLink.js"));
   ({ config } = await import("../src/config/env.js"));
   ({ signAccessToken } = await import("../src/utils/tokens.js"));
   ({ default: LocalDiskAdapter } = await import("../src/storage/LocalDiskAdapter.js"));
@@ -147,7 +177,12 @@ before(async () => {
   ({ createEncryptStream } = await import("../src/crypto/unitCipher.js"));
 
   await mongoose.connect(uri);
-  await Promise.all([ensureFileIndexes(), Shard.init(), Event.init()]);
+  await Promise.all([
+    ensureFileIndexes(),
+    Shard.init(),
+    Event.init(),
+    ShareLink.init(),
+  ]);
   server = createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}`;
@@ -619,4 +654,242 @@ test("stored provider shard bytes do not contain the plaintext marker", async ()
     const bytes = await providers[shard.position].adapter.getObject(shard.objectKey);
     assert.equal(bytes.includes(marker), false, `provider ${shard.position}, group ${shard.groupNo}`);
   }
+});
+
+test("share links download without a user JWT and store only a token hash", async () => {
+  const original = crypto.randomBytes(64 * 1024);
+  const { body: uploaded, as: ownerId } = await upload(original);
+  const { response: created, body } = await createShare(uploaded.file.id, ownerId);
+  assert.equal(created.status, 201);
+  const tokenValue = new URL(body.url).pathname.split("/").pop();
+  assert.match(tokenValue, /^[A-Za-z0-9_-]{43}$/);
+
+  const stored = await ShareLink.findById(body.shareId)
+    .select("+tokenHash")
+    .lean();
+  assert.equal(
+    stored.tokenHash,
+    crypto.createHash("sha256").update(tokenValue).digest("hex"),
+  );
+  assert.equal(stored.passwordHash, undefined);
+
+  const infoResponse = await shareRequest(tokenValue, "info");
+  assert.equal(infoResponse.status, 200);
+  const info = await infoResponse.json();
+  assert.equal(info.fileName, "sample.bin");
+  assert.equal(info.size, original.length);
+  assert.equal(info.requiresPassword, false);
+  assert.equal(info.ownerId, undefined);
+
+  const result = await shareRequest(tokenValue, "download");
+  assert.equal(result.status, 200);
+  assert.deepEqual(Buffer.from(await result.arrayBuffer()), original);
+  assert.equal(result.headers.get("cache-control"), "no-store");
+  assert.equal(result.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(result.headers.get("x-robots-tag"), "noindex");
+  const events = await Event.find({ type: { $in: ["share_created", "share_download"] } }).lean();
+  assert.deepEqual(events.map((event) => event.type).sort(), ["share_created", "share_download"]);
+  assert.equal(JSON.stringify(events).includes(tokenValue), false);
+
+  const collections = await mongoose.connection.db
+    .listCollections({}, { nameOnly: true })
+    .toArray();
+  for (const collection of collections) {
+    const docs = await mongoose.connection.db
+      .collection(collection.name)
+      .find({})
+      .toArray();
+    assert.equal(
+      JSON.stringify(docs).includes(tokenValue),
+      false,
+      `raw share token found in ${collection.name}`,
+    );
+  }
+});
+
+test("unknown, expired, revoked, and deleted-file links have uniform 404 responses", async () => {
+  const { body: uploaded, as: ownerId } = await upload(Buffer.from("share lifecycle"));
+  const expired = await createShare(uploaded.file.id, ownerId);
+  const revoked = await createShare(uploaded.file.id, ownerId);
+  const expiredToken = new URL(expired.body.url).pathname.split("/").pop();
+  const revokedToken = new URL(revoked.body.url).pathname.split("/").pop();
+  await ShareLink.updateOne(
+    { _id: expired.body.shareId },
+    { $set: { expiresAt: new Date(Date.now() - 1000) } },
+  );
+  const revokeResponse = await fetch(
+    `${baseUrl}/api/shares/${revoked.body.shareId}`,
+    { method: "DELETE", headers: authHeaders(ownerId) },
+  );
+  assert.equal(revokeResponse.status, 200);
+  const repeatedRevoke = await fetch(
+    `${baseUrl}/api/shares/${revoked.body.shareId}`,
+    { method: "DELETE", headers: authHeaders(ownerId) },
+  );
+  assert.equal(repeatedRevoke.status, 200);
+  assert.deepEqual(await repeatedRevoke.json(), { success: true });
+
+  const unknownToken = crypto.randomBytes(32).toString("base64url");
+  const responses = await Promise.all(
+    [unknownToken, expiredToken, revokedToken].map((value) =>
+      shareRequest(value, "info"),
+    ),
+  );
+  const bodies = await Promise.all(responses.map((response) => response.json()));
+  for (const response of responses) assert.equal(response.status, 404);
+  for (const body of bodies)
+    assert.deepEqual(body, { success: false, message: "Link not available" });
+
+  const deleted = await createShare(uploaded.file.id, ownerId);
+  const deletedToken = new URL(deleted.body.url).pathname.split("/").pop();
+  const deleteResponse = await fetch(`${baseUrl}/api/files/${uploaded.file.id}`, {
+    method: "DELETE",
+    headers: authHeaders(ownerId),
+  });
+  assert.equal(deleteResponse.status, 200);
+  assert.equal(await ShareLink.countDocuments({ fileId: uploaded.file.id }), 0);
+  const deletedResponse = await shareRequest(deletedToken, "info");
+  assert.equal(deletedResponse.status, 404);
+  assert.deepEqual(await deletedResponse.json(), bodies[0]);
+});
+
+test("download limits are atomic under concurrent requests", async () => {
+  const original = crypto.randomBytes(256 * 1024);
+  const { body: uploaded, as: ownerId } = await upload(original);
+  const { body } = await createShare(uploaded.file.id, ownerId, {
+    expiresIn: "24h",
+    maxDownloads: 3,
+  });
+  const tokenValue = new URL(body.url).pathname.split("/").pop();
+  const responses = await Promise.all(
+    Array.from({ length: 10 }, () => shareRequest(tokenValue, "download")),
+  );
+  const succeeded = responses.filter((response) => response.status === 200);
+  assert.equal(succeeded.length, 3);
+  for (const response of succeeded)
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), original);
+  const stored = await ShareLink.findById(body.shareId).lean();
+  assert.equal(stored.downloadCount, 3);
+  const unavailableResponse = await shareRequest(tokenValue, "info");
+  assert.equal(unavailableResponse.status, 404);
+});
+
+test("password links reject wrong passwords, rate-limit attempts, and accept the right password", async () => {
+  const original = Buffer.from("password-protected share");
+  const { body: uploaded, as: ownerId } = await upload(original);
+  const { body } = await createShare(uploaded.file.id, ownerId, {
+    expiresIn: "1h",
+    password: "correct horse battery staple",
+  });
+  const tokenValue = new URL(body.url).pathname.split("/").pop();
+  const attemptIp = "198.18.230.10";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await shareRequest(tokenValue, "download", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Client-IP": attemptIp,
+      },
+      body: JSON.stringify({ password: "wrong" }),
+    });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), {
+      success: false,
+      message: "Invalid password",
+    });
+  }
+  const limited = await shareRequest(tokenValue, "download", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Internal-Client-IP": attemptIp,
+    },
+    body: JSON.stringify({ password: "wrong" }),
+  });
+  assert.equal(limited.status, 429);
+
+  const correct = await shareRequest(tokenValue, "download", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Internal-Client-IP": "198.18.230.11",
+    },
+    body: JSON.stringify({ password: "correct horse battery staple" }),
+  });
+  assert.equal(correct.status, 200);
+  assert.deepEqual(Buffer.from(await correct.arrayBuffer()), original);
+});
+
+test("another user cannot create, list, or revoke a file owner's share links", async () => {
+  const { body: uploaded, as: ownerId } = await upload(Buffer.from("owner only"));
+  const { body: created } = await createShare(uploaded.file.id, ownerId);
+  const otherHeaders = authHeaders(userId());
+  const otherCreate = await fetch(
+    `${baseUrl}/api/files/${uploaded.file.id}/shares`,
+    {
+      method: "POST",
+      headers: { ...otherHeaders, "Content-Type": "application/json" },
+      body: JSON.stringify({ expiresIn: "24h" }),
+    },
+  );
+  const otherList = await fetch(`${baseUrl}/api/files/${uploaded.file.id}/shares`, {
+    headers: otherHeaders,
+  });
+  const otherRevoke = await fetch(
+    `${baseUrl}/api/shares/${created.shareId}`,
+    { method: "DELETE", headers: otherHeaders },
+  );
+  for (const response of [otherCreate, otherList, otherRevoke]) {
+    assert.equal(response.status, 404);
+    assert.equal((await response.json()).success, false);
+  }
+});
+
+test("public share routes require the internal credential but no user JWT", async () => {
+  const { body: uploaded, as: ownerId } = await upload(Buffer.from("private route"));
+  const { body } = await createShare(uploaded.file.id, ownerId);
+  const tokenValue = new URL(body.url).pathname.split("/").pop();
+  const noCredential = await fetch(`${baseUrl}/api/share/${tokenValue}/info`);
+  assert.equal(noCredential.status, 401);
+  const userJwtOnly = await fetch(`${baseUrl}/api/share/${tokenValue}/info`, {
+    headers: { Authorization: `Bearer ${token(ownerId)}` },
+  });
+  assert.equal(userJwtOnly.status, 401);
+  const internalOnly = await fetch(`${baseUrl}/api/share/${tokenValue}/info`, {
+    headers: shareHeaders(),
+  });
+  assert.equal(internalOnly.status, 200);
+});
+
+test("share downloads recover one offline provider and fail without plaintext when two shards are bad", async () => {
+  const original = crypto.randomBytes(128 * 1024);
+  const { body: uploaded, as: ownerId } = await upload(original);
+  const { body } = await createShare(uploaded.file.id, ownerId);
+  const tokenValue = new URL(body.url).pathname.split("/").pop();
+  const provider = providers[0];
+  provider.setMode("offline");
+  try {
+    const recovered = await shareRequest(tokenValue, "download");
+    assert.equal(recovered.status, 200);
+    assert.deepEqual(Buffer.from(await recovered.arrayBuffer()), original);
+  } finally {
+    provider.setMode("none");
+    await Shard.updateMany(
+      { fileId: uploaded.file.id, providerIndex: provider.adapter.index, status: "missing" },
+      { $set: { status: "verified" } },
+    );
+  }
+
+  await Shard.updateMany(
+    { fileId: uploaded.file.id, groupNo: 0, position: { $in: [0, 1] } },
+    { $set: { status: "missing" } },
+  );
+  const failed = await shareRequest(tokenValue, "download");
+  assert.equal(failed.status, 503);
+  const failedBody = await failed.text();
+  assert.equal(failedBody.includes(original.toString("utf8")), false);
+  assert.equal(
+    (await ShareLink.findById(body.shareId).lean()).downloadCount,
+    1,
+  );
 });

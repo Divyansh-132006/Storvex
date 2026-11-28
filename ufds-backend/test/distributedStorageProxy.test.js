@@ -5,6 +5,8 @@ import { after, before, test } from "node:test";
 
 let upstream;
 let upstreamUrl;
+let gatewayServer;
+let gatewayUrl;
 let proxy;
 let proxyRequest;
 let sendResponse;
@@ -42,6 +44,7 @@ before(async () => {
       url: req.url,
       authorization: req.headers.authorization,
       internalServiceToken: req.headers["x-internal-service-token"],
+      internalClientIp: req.headers["x-internal-client-ip"],
       contentType: req.headers["content-type"],
       body: Buffer.concat(chunks),
     };
@@ -55,12 +58,18 @@ before(async () => {
   process.env.JWT_ACCESS_SECRET ||= "proxy-test-secret";
   process.env.INTERNAL_SERVICE_TOKEN = "proxy-test-service-token-at-least-32-bytes";
   process.env.MONGODB_URI ||= "mongodb://127.0.0.1:27017/proxy-test";
+  process.env.DATABASE_URL ||= process.env.MONGODB_URI;
   ({ requestDistributedStorage: proxyRequest, sendDistributedStorageResponse: sendResponse } =
     await import("../services/distributedStorageProxy.service.js"));
   proxy = { proxyRequest, sendResponse };
+  const { default: app } = await import("../app.js");
+  gatewayServer = createServer(app);
+  await new Promise((resolve) => gatewayServer.listen(0, "127.0.0.1", resolve));
+  gatewayUrl = `http://127.0.0.1:${gatewayServer.address().port}`;
 });
 
 after(async () => {
+  if (gatewayServer) await new Promise((resolve) => gatewayServer.close(resolve));
   if (upstream) await new Promise((resolve) => upstream.close(resolve));
 });
 
@@ -96,4 +105,51 @@ test("forwards the authenticated multipart upload stream and relays the response
     Buffer.concat(response.chunks),
     Buffer.from(JSON.stringify({ success: true, file: { id: "test-file" } })),
   );
+});
+
+test("proxies public shares with the internal credential but no user JWT", async () => {
+  const request = Readable.from([]);
+  request.method = "POST";
+  request.ip = "203.0.113.27";
+  request.get = (name) => ({
+    authorization: "Bearer must-not-be-forwarded",
+  })[name.toLowerCase()];
+
+  const upstreamResponse = await proxy.proxyRequest(
+    request,
+    "/token-value/download",
+    {
+      basePath: "/api/share",
+      method: "POST",
+      forwardAuthorization: false,
+      forwardClientIp: true,
+      jsonBody: { password: "link-password" },
+    },
+  );
+  const response = new MockResponse();
+  await proxy.sendResponse(upstreamResponse, response);
+
+  assert.equal(receivedRequest.url, "/api/share/token-value/download");
+  assert.equal(receivedRequest.authorization, undefined);
+  assert.equal(
+    receivedRequest.internalServiceToken,
+    "proxy-test-service-token-at-least-32-bytes",
+  );
+  assert.equal(receivedRequest.internalClientIp, "203.0.113.27");
+  assert.equal(receivedRequest.contentType, "application/json");
+  assert.equal(receivedRequest.body.toString(), JSON.stringify({ password: "link-password" }));
+});
+
+test("gateway exposes public share info without a user JWT", async () => {
+  const response = await fetch(`${gatewayUrl}/api/share/token-value/info`);
+  assert.equal(response.status, 201);
+  assert.equal(receivedRequest.url, "/api/share/token-value/info");
+  assert.equal(receivedRequest.authorization, undefined);
+  assert.equal(
+    receivedRequest.internalServiceToken,
+    "proxy-test-service-token-at-least-32-bytes",
+  );
+  assert.ok(receivedRequest.internalClientIp);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  assert.equal(response.headers.get("referrer-policy"), "no-referrer");
 });

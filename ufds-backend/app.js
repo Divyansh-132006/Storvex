@@ -4,6 +4,8 @@ import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import authRoutes from "./routes/auth.routes.js";
 import fileRoutes from "./routes/file.routes.js";
+import shareRoutes from "./routes/share.routes.js";
+import shareManagementRoutes from "./routes/shareManagement.routes.js";
 import { config } from "./config/env.js";
 
 const app = express();
@@ -13,11 +15,9 @@ app.use(
     cors({
         origin(origin, callback) {
             const normalizedOrigin = origin?.replace(/\/$/, "");
-            const allowedOrigins = new Set([
-                config.frontendUrl,
-                "https://storvex.onrender.com",
-                "http://localhost:5173",
-            ]);
+            const allowedOrigins = new Set([config.frontendUrl]);
+            if (config.nodeEnv !== "production")
+                allowedOrigins.add("http://localhost:5173");
             if (!origin || allowedOrigins.has(normalizedOrigin)) {
                 callback(null, true);
                 return;
@@ -32,6 +32,8 @@ app.use(express.json({
 }));
 app.use(cookieParser());
 app.use("/api/auth", authRoutes);
+app.use("/api/share", shareRoutes);
+app.use("/api/shares", shareManagementRoutes);
 app.use("/api/files", fileRoutes);
 
 app.get('/', (req, res)=>{

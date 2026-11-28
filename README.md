@@ -76,22 +76,26 @@ Deploy in this order: (1) the `storvex-storage` service, (2) the
 `storvexx-backend` gateway, then (3) the frontend. Set the gateway's
 `DISTRIBUTED_STORAGE_URL` to the storage service's HTTPS base URL. Set the
 same `JWT_ACCESS_SECRET`, `MONGODB_URI`, and high-entropy
-`INTERNAL_SERVICE_TOKEN` on both backend services. The gateway forwards the
-user access JWT and adds the internal token; the storage API rejects direct
-file requests without both. Keep the token server-side and never expose it to
-the frontend.
+`INTERNAL_SERVICE_TOKEN` on both backend services. The gateway sends the
+internal token on every storage request. Owner-only storage requests also
+forward the user's access JWT; public share requests deliberately omit the
+user JWT and use the internal token plus the unguessable share token. The
+storage API rejects direct requests without the internal token. Keep it
+server-side and never expose it to the frontend.
 
-The storage service also needs `NODE_ENV=production`, `MASTER_KEY_V1`,
-`CURRENT_KEY_VERSION`, `GOOGLE_CLIENT_ID`, `CLIENT_URL`, and explicitly set
-`PROVIDER_1_TYPE` through `PROVIDER_5_TYPE`. For real cloud storage, set each
-provider type to `s3` and supply the matching `PROVIDER_N_BUCKET`,
-`PROVIDER_N_REGION`, optional `PROVIDER_N_ENDPOINT`, and credentials (or
-configure the hosting platform's supported AWS credential provider). Never
-set `ALLOW_SIMULATED_PROVIDERS=true` for a production deployment using real
-cloud failure domains. The gateway needs its MongoDB/JWT settings,
-`INTERNAL_SERVICE_TOKEN`, `DISTRIBUTED_STORAGE_URL`, Google OAuth values, and
-the production frontend URL. The frontend needs `VITE_API_URL` pointing to the
-gateway.
+The storage service needs `NODE_ENV`, `MONGODB_URI`, `JWT_ACCESS_SECRET`,
+`INTERNAL_SERVICE_TOKEN`, `GOOGLE_CLIENT_ID`, `CLIENT_URL`, `MASTER_KEY_V1`,
+`CURRENT_KEY_VERSION`, and explicitly set `PROVIDER_1_TYPE` through
+`PROVIDER_5_TYPE`. For real cloud storage, set each provider type to `s3` and
+supply the matching `PROVIDER_N_BUCKET`, `PROVIDER_N_REGION`, optional
+`PROVIDER_N_ENDPOINT`, and credentials (or configure the hosting platform's
+supported AWS credential provider). Never set
+`ALLOW_SIMULATED_PROVIDERS=true` for a production deployment using real cloud
+failure domains. The gateway needs `NODE_ENV`, `MONGODB_URI`,
+`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, the same `INTERNAL_SERVICE_TOKEN`,
+`DISTRIBUTED_STORAGE_URL`, Google OAuth values, and `FRONTEND_URL`. The
+frontend needs `VITE_API_URL` pointing to the gateway. `render.yaml` declares
+variable names only; supply their values in the Render dashboard.
 
 The storage service warns if multiple provider slots share an endpoint and
 account. Set `PROVIDER_N_ACCOUNT_ID` when different credentials belong to the
@@ -334,6 +338,29 @@ MongoDB test instance).
 | GET | `/api/files` | List the authenticated user's committed files |
 | GET | `/api/files/:id/download` | Authenticated owner-only streaming download |
 | DELETE | `/api/files/:id` | Idempotent owner-only deletion |
+
+### Secure share links
+
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| POST | `/api/files/:id/shares` | Owner JWT | Create a link with an expiry, optional download limit, and optional password |
+| GET | `/api/files/:id/shares` | Owner JWT | List link status and usage; never returns tokens |
+| DELETE | `/api/shares/:shareId` | Owner JWT | Revoke a link; idempotent |
+| GET | `/api/share/:token/info` | Public link | Return the decrypted file name, size, MIME type, expiry, and password requirement |
+| GET | `/api/share/:token/download` | Public link | Download a link without a password |
+| POST | `/api/share/:token/download` | Public link | Download a link, optionally with `{ "password": "..." }` |
+
+Expiry values are `1h`, `24h`, `7d`, or `30d`; download limits are optional and
+range from 1 to 1000. A link stops working when revoked, expired, exhausted, or
+when its committed file is deleted. Deleting a file also deletes its links.
+Public endpoints are rate-limited and return generic unavailable responses for
+unknown, revoked, expired, exhausted, or missing-file links. The storage
+service owns `ShareLink` alongside its `File` and `Shard` records. The gateway
+proxies public calls without a user JWT, adds the internal service token, and
+streams the verified download response.
+
+The public share page uses `/s/:token`; the Render rewrite and frontend
+`public/_redirects` keep this route working with the SPA.
 
 The database contains the owner, status, timestamps, sizes, unit count, key
 version, random file salt, encrypted metadata, ciphertext SHA-256, and random

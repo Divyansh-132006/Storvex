@@ -92,8 +92,8 @@ export const googleCallback = async (req, res, next) => {
     res.clearCookie(OAUTH_STATE_COOKIE, { httpOnly: true, secure: isProduction, sameSite: "lax", path: "/api/auth" });
     const result = await authService.googleLogin(req.query.code);
     setRefreshCookie(res, result.refreshToken);
-    return res.redirect(`${config.frontendUrl}/#/login?oauth=success`);
+    return res.redirect(`${config.frontendUrl}/login?oauth=success`);
   } catch (error) {
-    return res.redirect(`${config.frontendUrl}/#/login?oauth=error`);
+    return res.redirect(`${config.frontendUrl}/login?oauth=error`);
   }
 };
